@@ -131,7 +131,6 @@ public/
   sw.js                 Service worker (cache-first for static chunks, network-first for HTML)
   manifest.webmanifest  PWA manifest
 
-legacy/                 Archived Python/Flask original (not used at runtime)
 db/                     SQLite database (gitignored)
 ```
 
