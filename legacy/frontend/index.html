@@ -1,0 +1,1184 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#020617" />
+  <title>Lesson Tracker</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --muted: #94a3b8;
+      --text: #e5e7eb;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --blue: #38bdf8;
+      --border: #334155;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      overflow-x: hidden;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, Arial, sans-serif;
+      background: linear-gradient(180deg, #020617, #0f172a 30%, #020617);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .container {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    .bottom {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .card {
+      min-width: 0;
+      background: rgba(17,24,39,0.9);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 14px 40px rgba(0,0,0,0.25);
+    }
+
+    .header-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 8px;
+      min-width: 0;
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+      min-width: 0;
+      width: 100%;
+    }
+
+    .stats.no-top-margin {
+      margin-top: 0;
+    }
+
+    .stat {
+      min-width: 0;
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(31,41,55,0.7);
+    }
+
+    .stat .label {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .stat .value {
+      font-size: clamp(22px, 2vw, 24px);
+      font-weight: 700;
+      margin-top: 4px;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
+    }
+
+    .dashboard-top {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr);
+      gap: 20px;
+      align-items: stretch;
+      margin-top: 8px;
+      min-width: 0;
+    }
+
+    .dashboard-panel {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-header {
+      min-height: 84px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      min-width: 0;
+    }
+
+    .panel-header h1,
+    .panel-header h2 {
+      line-height: 1.05;
+      overflow-wrap: anywhere;
+    }
+
+    .panel-header .sub {
+      margin-top: 6px;
+    }
+
+    .panel-body {
+      flex: 1;
+      padding-top: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .dashboard-progress {
+      display: grid;
+      grid-template-columns: minmax(260px, 460px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: center;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+    }
+
+    .dashboard-progress > div:last-child {
+      width: 100%;
+    }
+
+    .dashboard-panel .panel-body > .stats {
+      width: 100%;
+    }
+
+    .dashboard-today .panel-body {
+      align-items: stretch;
+      justify-content: stretch;
+    }
+
+    .dashboard-today .stats {
+      width: 100%;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .chart-wrap {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 280px;
+      min-width: 0;
+    }
+
+    .chart-box {
+      position: relative;
+      width: min(100%, 420px);
+      aspect-ratio: 1 / 1;
+      margin: 0 auto;
+    }
+
+    .chart-box canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .weekly-section {
+      margin-top: 22px;
+      border-top: 1px solid var(--border);
+      padding-top: 20px;
+      min-width: 0;
+    }
+
+    .subject-progress-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .subject-progress-card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(2,6,23,0.45);
+    }
+
+    .subject-progress-title {
+      font-weight: 700;
+      margin-bottom: 6px;
+      overflow-wrap: anywhere;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(51,65,85,0.5);
+      overflow: hidden;
+      margin: 8px 0;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #22c55e, #38bdf8);
+      border-radius: 999px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    button {
+      cursor: pointer;
+      border: 1px solid var(--border);
+      color: var(--text);
+      background: #0b1220;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-weight: 600;
+      min-height: 40px;
+    }
+
+    button.primary {
+      background: #0ea5e9;
+      color: #082f49;
+      border-color: #38bdf8;
+    }
+
+    button.danger {
+      background: #3f0a0a;
+      color: #fecaca;
+      border-color: #7f1d1d;
+    }
+
+    button.small {
+      padding: 8px 10px;
+      font-size: 12px;
+      min-height: 36px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      overflow-y: hidden;
+      margin-top: 12px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    input, select {
+      width: 100%;
+      border-radius: 10px;
+      background: #020617;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px;
+      outline: none;
+      min-height: 42px;
+      font-size: 16px;
+    }
+
+    .schedule-grid {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+      min-width: 0;
+    }
+
+    .weekly-wide {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      width: 100%;
+      align-items: stretch;
+    }
+
+    .day-col {
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 220px;
+      background: rgba(2,6,23,0.45);
+    }
+
+    .day-title {
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .lesson-tag {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0b1220;
+      margin-bottom: 8px;
+      font-size: 13px;
+      min-width: 0;
+    }
+
+    .lesson-tag .muted {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .todo-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+      max-height: 560px;
+      overflow: auto;
+      padding-right: 4px;
+      min-width: 0;
+    }
+
+    .todo-item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(2,6,23,0.45);
+      min-width: 0;
+    }
+
+    .todo-item.done {
+      opacity: 0.65;
+    }
+
+    .todo-main {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .todo-title {
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .todo-meta {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .badge {
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .ok {
+      color: #86efac;
+      background: rgba(20,83,45,0.3);
+    }
+
+    .late {
+      color: #fecaca;
+      background: rgba(127,29,29,0.3);
+    }
+
+    .today {
+      color: #fde68a;
+      background: rgba(120,53,15,0.3);
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .error-banner {
+      display: none;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid #7f1d1d;
+      background: rgba(127,29,29,0.2);
+      color: #fecaca;
+      font-size: 13px;
+    }
+
+    .install-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 8px;
+    }
+
+    .empty-chart {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 260px;
+      border: 1px dashed var(--border);
+      border-radius: 14px;
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+      padding: 16px;
+      background: rgba(2,6,23,0.25);
+    }
+
+    @media (max-width: 1180px) {
+      .dashboard-top {
+        grid-template-columns: 1fr;
+      }
+
+      .dashboard-panel.dashboard-today {
+        order: 2;
+      }
+
+      .dashboard-panel.dashboard-main {
+        order: 1;
+      }
+
+      .subject-progress-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 980px) {
+      .container {
+        padding: 12px;
+      }
+
+      .bottom {
+        grid-template-columns: 1fr;
+      }
+
+      .dashboard-progress {
+        grid-template-columns: 1fr;
+        gap: 18px;
+      }
+
+      .panel-body {
+        justify-content: stretch;
+      }
+
+      .chart-wrap {
+        min-height: auto;
+      }
+
+      .chart-box {
+        width: min(100%, 360px);
+      }
+
+      .stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .dashboard-today .stats,
+      .dashboard-main .stats {
+        grid-template-columns: 1fr;
+        width: 100%;
+      }
+
+      .weekly-wide {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .day-col {
+        min-height: 220px;
+      }
+
+      .panel-header {
+        min-height: auto;
+      }
+
+      .header-row {
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+    }
+
+    @media (max-width: 700px) {
+      .card {
+        padding: 12px;
+        border-radius: 16px;
+      }
+
+      .panel-header {
+        padding-bottom: 12px;
+      }
+
+      .panel-body {
+        padding-top: 12px;
+      }
+
+      .stats,
+      .subject-progress-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .weekly-wide {
+        grid-template-columns: 1fr;
+      }
+
+      .todo-item {
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+
+      .todo-item .badge {
+        grid-column: 2;
+        justify-self: start;
+      }
+
+      .pill {
+        font-size: 11px;
+      }
+
+      h1 {
+        font-size: 2rem;
+      }
+
+      h2 {
+        font-size: 1.8rem;
+      }
+
+      h3 {
+        font-size: 1.5rem;
+      }
+
+      .sub {
+        font-size: 13px;
+      }
+
+      .stat .value {
+        font-size: 22px;
+      }
+
+      .toolbar {
+        width: 100%;
+      }
+
+      .toolbar button {
+        flex: 1 1 auto;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        padding: 10px;
+      }
+
+      .card {
+        padding: 10px;
+      }
+
+      .chart-box {
+        width: min(100%, 300px);
+      }
+
+      .header-row {
+        gap: 8px;
+      }
+
+      button,
+      input,
+      select {
+        font-size: 16px;
+      }
+
+      .todo-item {
+        gap: 10px;
+        padding: 10px;
+      }
+
+      .lesson-tag,
+      .stat,
+      .day-col,
+      .subject-progress-card {
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <section class="card">
+        <div class="header-row">
+          <div></div>
+          <div class="pill">Porta: 8333</div>
+        </div>
+
+        <div class="install-row">
+          <button id="installBtn" class="small" style="display:none;">Installa app</button>
+        </div>
+
+        <div class="error-banner" id="errorBanner"></div>
+
+        <div class="dashboard-top">
+          <div class="dashboard-panel dashboard-main">
+            <div class="panel-header">
+              <h1>Lesson Tracker</h1>
+              <div class="sub">Planner locale per lezioni in presenza / asincrone.</div>
+            </div>
+
+            <div class="panel-body">
+              <div class="dashboard-progress">
+                <div class="chart-wrap">
+                  <div class="chart-box" id="chartBox">
+                    <canvas id="progressChart"></canvas>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="stats no-top-margin">
+                    <div class="stat">
+                      <div class="label">Avanzamento</div>
+                      <div class="value" id="progressPercent">0%</div>
+                    </div>
+                    <div class="stat">
+                      <div class="label">Da seguire</div>
+                      <div class="value" id="pendingCount">0</div>
+                    </div>
+                    <div class="stat">
+                      <div class="label">Seguite</div>
+                      <div class="value" id="doneCount">0</div>
+                    </div>
+                    <div class="stat">
+                      <div class="label">Totale generate</div>
+                      <div class="value" id="totalCount">0</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="dashboard-panel dashboard-today">
+            <div class="panel-header">
+              <h2>Oggi</h2>
+              <div class="sub">Giornata corrente.</div>
+            </div>
+
+            <div class="panel-body">
+              <div class="stats no-top-margin">
+                <div class="stat">
+                  <div class="label">Data locale</div>
+                  <div class="value" id="todayDate">-</div>
+                </div>
+                <div class="stat">
+                  <div class="label">Ora locale</div>
+                  <div class="value" id="clockNow">-</div>
+                </div>
+                <div class="stat">
+                  <div class="label">Lezioni previste oggi</div>
+                  <div class="value" id="todayPlanned">0</div>
+                </div>
+                <div class="stat">
+                  <div class="label">Giorno settimana</div>
+                  <div class="value" id="weekdayName">-</div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <div class="weekly-section">
+          <h3>Vista settimanale</h3>
+          <div class="sub">Calendario settimanale sintetico.</div>
+          <div class="schedule-grid weekly-wide" id="weeklyGrid"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="header-row">
+          <div>
+            <h2>Progresso per materia</h2>
+            <div class="sub">Vista rapida del recupero per corso.</div>
+          </div>
+        </div>
+        <div class="subject-progress-grid" id="subjectProgressGrid"></div>
+      </section>
+    </div>
+
+    <div class="bottom">
+      <section class="card">
+        <div class="header-row">
+          <div>
+            <h2>Configurazione calendario settimanale</h2>
+            <div class="sub">Ogni riga descrive una materia ricorrente in un giorno specifico.</div>
+          </div>
+          <div class="toolbar">
+            <button class="small" onclick="addRow()">+ Riga</button>
+            <button class="primary small" onclick="saveSchedule()">Salva calendario</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Giorno</th>
+                <th>Materia</th>
+                <th>Da</th>
+                <th>A</th>
+                <th>Modalità</th>
+                <th>Azioni</th>
+              </tr>
+            </thead>
+            <tbody id="scheduleRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="header-row">
+          <div>
+            <h2>Lezioni da seguire / segnare</h2>
+            <div class="sub">Mostra solo lezioni arretrate non ancora completate. Puoi marcarle come completate quando recuperate o seguite.</div>
+          </div>
+          <div class="toolbar">
+            <button class="small" onclick="refreshAll()">Aggiorna</button>
+            <button class="danger small" onclick="resetCompletions()">Reset completate</button>
+          </div>
+        </div>
+
+        <div id="todoSummary" class="sub">-</div>
+        <div class="todo-list" id="todoList"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const weekdays = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì"];
+    let chart = null;
+    let deferredPrompt = null;
+
+    function defaultRow(data = {}) {
+      return {
+        weekday: data.weekday || "Lunedì",
+        subject: data.subject || "",
+        start_date: data.start_date || "2026-02-26",
+        end_date: data.end_date || "2026-06-03",
+        mode: data.mode || "asincrona"
+      };
+    }
+
+    function rowHtml(row, idx) {
+      return `
+        <tr>
+          <td>
+            <select data-field="weekday">
+              ${weekdays.map(d => `<option value="${d}" ${row.weekday === d ? 'selected' : ''}>${d}</option>`).join('')}
+            </select>
+          </td>
+          <td><input data-field="subject" value="${escapeHtml(row.subject)}" placeholder="Es. Fisica" /></td>
+          <td><input data-field="start_date" type="date" value="${row.start_date}" /></td>
+          <td><input data-field="end_date" type="date" value="${row.end_date}" /></td>
+          <td>
+            <select data-field="mode">
+              <option value="presenza" ${row.mode === 'presenza' ? 'selected' : ''}>presenza</option>
+              <option value="asincrona" ${row.mode === 'asincrona' ? 'selected' : ''}>asincrona</option>
+            </select>
+          </td>
+          <td><button class="small" onclick="removeRow(${idx})">Rimuovi</button></td>
+        </tr>
+      `;
+    }
+
+    function escapeHtml(s) {
+      return (s || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;');
+    }
+
+    function showError(message) {
+      const banner = document.getElementById('errorBanner');
+      if (!banner) return;
+      banner.style.display = 'block';
+      banner.textContent = message;
+    }
+
+    function clearError() {
+      const banner = document.getElementById('errorBanner');
+      if (!banner) return;
+      banner.style.display = 'none';
+      banner.textContent = '';
+    }
+
+    async function fetchJSON(url, options = {}) {
+      const res = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || 'Errore richiesta');
+      }
+      return await res.json();
+    }
+
+    async function loadSchedule() {
+      const data = await fetchJSON('/api/schedule');
+      const rows = data.rows || [];
+      const tbody = document.getElementById('scheduleRows');
+
+      if (!tbody) throw new Error('Elemento scheduleRows non trovato');
+
+      tbody.innerHTML = '';
+      rows.forEach((row, idx) => {
+        tbody.insertAdjacentHTML('beforeend', rowHtml(defaultRow(row), idx));
+      });
+
+      if (rows.length === 0) addRow();
+      renderWeeklyGrid(rows);
+    }
+
+    function addRow(prefill = null) {
+      const tbody = document.getElementById('scheduleRows');
+      if (!tbody) return;
+
+      const currentRows = readRowsFromTable();
+      const rows = [...currentRows, defaultRow(prefill || {})];
+
+      tbody.innerHTML = rows.map((r, idx) => rowHtml(r, idx)).join('');
+      renderWeeklyGrid(rows);
+    }
+
+    function removeRow(idx) {
+      const rows = readRowsFromTable();
+      rows.splice(idx, 1);
+
+      const tbody = document.getElementById('scheduleRows');
+      if (!tbody) return;
+
+      tbody.innerHTML = rows.map((r, i) => rowHtml(r, i)).join('');
+
+      if (rows.length === 0) addRow();
+      renderWeeklyGrid(rows);
+    }
+
+    function readRowsFromTable() {
+      const trs = Array.from(document.querySelectorAll('#scheduleRows tr'));
+      return trs.map(tr => {
+        const obj = {};
+        tr.querySelectorAll('[data-field]').forEach(el => {
+          obj[el.dataset.field] = el.value.trim();
+        });
+        return obj;
+      }).filter(r => r.subject);
+    }
+
+    async function saveSchedule() {
+      try {
+        clearError();
+        const rows = readRowsFromTable();
+        await fetchJSON('/api/schedule', {
+          method: 'POST',
+          body: JSON.stringify({ rows })
+        });
+        await refreshAll();
+      } catch (e) {
+        console.error(e);
+        showError(`Errore salvataggio calendario: ${e.message}`);
+      }
+    }
+
+    function renderWeeklyGrid(rows) {
+      const grid = document.getElementById('weeklyGrid');
+      if (!grid) return;
+
+      const grouped = Object.fromEntries(weekdays.map(d => [d, []]));
+
+      rows.forEach(r => {
+        if (grouped[r.weekday]) grouped[r.weekday].push(r);
+      });
+
+      grid.innerHTML = weekdays.map(day => {
+        const items = grouped[day].map(item => `
+          <div class="lesson-tag">
+            <div><strong>${escapeHtml(item.subject)}</strong></div>
+            <div class="muted">${item.start_date} → ${item.end_date}</div>
+            <div class="muted">${item.mode}</div>
+          </div>
+        `).join('') || `<div class="muted">Nessuna lezione</div>`;
+
+        return `
+          <div class="day-col">
+            <div class="day-title">${day}</div>
+            ${items}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderSubjectProgress(subjects) {
+      const root = document.getElementById('subjectProgressGrid');
+      if (!root) return;
+
+      if (!subjects || !subjects.length) {
+        root.innerHTML = `<div class="muted">Nessun dato per materia.</div>`;
+        return;
+      }
+
+      root.innerHTML = subjects.map(item => `
+        <div class="subject-progress-card">
+          <div class="subject-progress-title">${escapeHtml(item.subject)}</div>
+          <div class="sub">Completate ${item.done} / ${item.total}</div>
+          <div class="progress-bar">
+            <div class="progress-bar-fill" style="width:${item.progress_percent}%;"></div>
+          </div>
+          <div class="sub">${item.progress_percent}% completato · arretrate: ${item.pending}</div>
+        </div>
+      `).join('');
+    }
+
+    async function loadDashboard() {
+      const data = await fetchJSON('/api/dashboard');
+
+      const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = value;
+      };
+
+      setText('progressPercent', `${data.progress_percent}%`);
+      setText('pendingCount', data.pending_count);
+      setText('doneCount', data.done_count);
+      setText('totalCount', data.total_count);
+
+      setText('todayDate', data.today);
+      setText('todayPlanned', data.today_count);
+      setText('weekdayName', data.today_weekday);
+      setText('clockNow', data.now_time);
+      setText('todoSummary', `Mostrate ${data.todo_items.length} lezioni arretrate da recuperare.`);
+
+      renderTodos(data.todo_items);
+      renderSubjectProgress(data.subject_progress || []);
+      renderChart(data.done_count, data.pending_count);
+    }
+
+    function renderTodos(items) {
+      const root = document.getElementById('todoList');
+      if (!root) return;
+
+      if (!items.length) {
+        root.innerHTML = `<div class="muted">Nessuna lezione arretrata da recuperare.</div>`;
+        return;
+      }
+
+      root.innerHTML = items.map(item => {
+        const badgeClass = item.done ? 'ok' : (item.status === 'late' ? 'late' : 'today');
+        const badgeText = item.done ? 'completata' : (item.status === 'late' ? 'arretrata' : 'oggi');
+
+        return `
+          <div class="todo-item ${item.done ? 'done' : ''}">
+            <input type="checkbox" ${item.done ? 'checked' : ''} onchange="toggleCompletion(${item.id}, this.checked)" />
+            <div class="todo-main">
+              <div class="todo-title">${escapeHtml(item.subject)}</div>
+              <div class="todo-meta">${item.lesson_date} · ${item.weekday} · ${item.mode}</div>
+            </div>
+            <div class="badge ${badgeClass}">${badgeText}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderChart(doneCount, pendingCount) {
+      const chartBox = document.getElementById('chartBox');
+      if (!chartBox) return;
+
+      if (chart) {
+        chart.destroy();
+        chart = null;
+      }
+
+      const total = Number(doneCount || 0) + Number(pendingCount || 0);
+
+      if (total <= 0) {
+        chartBox.innerHTML = `<div class="empty-chart">Nessun dato disponibile per il grafico.</div>`;
+        return;
+      }
+
+      chartBox.innerHTML = `<canvas id="progressChart"></canvas>`;
+      const canvas = document.getElementById('progressChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+
+      chart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Seguite', 'Da seguire'],
+          datasets: [{
+            data: [doneCount, pendingCount],
+            backgroundColor: ['#22c55e', '#ef4444'],
+            borderColor: ['#22c55e', '#ef4444'],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          resizeDelay: 180,
+          animation: false,
+          plugins: {
+            legend: {
+              labels: { color: '#e5e7eb' }
+            },
+            tooltip: { enabled: true }
+          }
+        }
+      });
+    }
+
+    async function toggleCompletion(lessonId, done) {
+      try {
+        clearError();
+        await fetchJSON(`/api/lesson/${lessonId}/toggle`, {
+          method: 'POST',
+          body: JSON.stringify({ done })
+        });
+        await loadDashboard();
+      } catch (e) {
+        console.error(e);
+        showError(`Errore aggiornamento lezione: ${e.message}`);
+      }
+    }
+
+    async function resetCompletions() {
+      try {
+        clearError();
+        await fetchJSON('/api/reset-completions', {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+        await loadDashboard();
+      } catch (e) {
+        console.error(e);
+        showError(`Errore reset completate: ${e.message}`);
+      }
+    }
+
+    async function refreshAll() {
+      await loadSchedule();
+      await loadDashboard();
+    }
+
+    function tickClock() {
+      const el = document.getElementById('clockNow');
+      if (!el) return;
+      const now = new Date();
+      el.innerText = now.toLocaleTimeString('it-IT');
+    }
+
+    function setupInstallPrompt() {
+      const btn = document.getElementById('installBtn');
+      if (!btn) return;
+
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        btn.style.display = 'inline-block';
+      });
+
+      btn.addEventListener('click', async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        await deferredPrompt.userChoice;
+        deferredPrompt = null;
+        btn.style.display = 'none';
+      });
+    }
+
+    async function setupPWA() {
+      if ('serviceWorker' in navigator) {
+        try {
+          await navigator.serviceWorker.register('/sw.js');
+        } catch (e) {
+          console.error('SW registration failed', e);
+        }
+      }
+      setupInstallPrompt();
+    }
+
+    async function boot() {
+      try {
+        clearError();
+        await setupPWA();
+        await refreshAll();
+        tickClock();
+        setInterval(tickClock, 1000);
+      } catch (e) {
+        console.error(e);
+        showError(`Errore inizializzazione dashboard: ${e.message}`);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', boot);
+  </script>
+</body>
+</html>

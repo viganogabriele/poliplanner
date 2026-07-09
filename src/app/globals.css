@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #030303;
+  --color-background-soft: #06090d;
+
+  --color-surface: #0a0f14;
+  --color-surface-elevated: #101820;
+  --color-surface-muted: #121c22;
+  --color-surface-hover: #16242b;
+
+  --color-border: #1b2a31;
+  --color-border-strong: #28414b;
+
+  --color-accent: #56d7fd;
+  --color-accent-soft: #1b7f96;
+  --color-accent-muted: #123b46;
+
+  --color-primary: #fcfcfc;
+  --color-secondary: #b5b5b5;
+  --color-muted: #7d8a90;
+  --color-disabled: #4d5a60;
+
+  --color-success: #5ee6a8;
+  --color-warning: #f2c94c;
+  --color-danger: #ff6b6b;
+  --color-info: #56d7fd;
+  --color-neutral: #8c969b;
+
+  /* Compatibility aliases for any legacy classes left during migration. */
+  --color-panel: #0a0f14;
+  --color-panel2: #121c22;
+
+  --radius-card: 20px;
+  --radius-panel: 24px;
+
+  --shadow-card: 0 12px 40px rgba(0, 0, 0, 0.32);
+  --shadow-elevated: 0 18px 60px rgba(0, 0, 0, 0.48);
+  --shadow-glow:
+    0 0 0 1px rgba(86, 215, 253, 0.24),
+    0 0 28px rgba(86, 215, 253, 0.14);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+  --font-sans: var(--font-geist-sans), Inter, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+html {
+  background: #030303;
+  color-scheme: dark;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  background:
+    linear-gradient(180deg, rgba(16, 24, 32, 0.34) 0%, rgba(6, 9, 13, 0.88) 34%, #030303 100%),
+    #030303;
+  min-height: 100vh;
+  color: #fcfcfc;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+* {
+  border-color: #1b2a31;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+input[type="date"] {
+  color-scheme: dark;
+}
+
+::selection {
+  background: rgba(86, 215, 253, 0.28);
+  color: #fcfcfc;
+}
+
+.progress-fill {
+  background: linear-gradient(90deg, #56d7fd, #5ee6a8);
+  box-shadow: 0 0 18px rgba(86, 215, 253, 0.16);
+}
+
+.numeric {
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,10 @@
+{
+  "name": "Lesson Tracker",
+  "short_name": "Tracker",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "description": "Planner locale per lezioni in presenza e asincrone",
+  "icons": []
+}
