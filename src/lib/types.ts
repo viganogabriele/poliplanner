@@ -1,5 +1,5 @@
 // ============================================================
-// Shared TypeScript types for the Lesson Tracker
+// Shared TypeScript types for Poliplanner
 // ============================================================
 // These types describe the shape of data flowing through the app:
 // from the database, through server functions, to React components.
@@ -8,6 +8,11 @@
 
 /** Lesson modes, matching the original app */
 export type LessonMode = "presenza" | "asincrona";
+
+export const LESSON_MODE_LABELS: Record<LessonMode, string> = {
+  presenza: "In presenza",
+  asincrona: "Registrazione / asincrona",
+};
 
 /**
  * One row in the `schedule` table.
@@ -79,4 +84,7 @@ export interface DashboardPayload {
   progress_percent: number;
   todo_items: TodoItem[];
   subject_progress: SubjectProgress[];
+  exam_total_count: number;
+  exam_passed_count: number;
+  exam_average: number | null;
 }

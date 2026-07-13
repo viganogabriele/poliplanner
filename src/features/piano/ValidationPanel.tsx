@@ -16,18 +16,27 @@ const borderColors = {
 };
 
 export default function ValidationPanel({ issues }: { issues: ValidationIssue[] }) {
-  if (issues.length === 0) {
+  const errors = issues.filter((i) => i.type === "error");
+  const warnings = issues.filter((i) => i.type === "warning");
+  const infos = issues.filter((i) => i.type === "info");
+
+  if (errors.length === 0 && warnings.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted">
-        <CheckCircle className="size-8 text-success" />
-        <span className="font-medium text-success">Piano valido</span>
-        <span className="text-xs">Tutti i vincoli sono soddisfatti.</span>
+      <div className="space-y-2">
+        <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted">
+          <CheckCircle className="size-8 text-success" />
+          <span className="font-medium text-success">Piano valido</span>
+          <span className="text-xs">Tutti i vincoli sono soddisfatti.</span>
+        </div>
+        {infos.map((issue) => (
+          <div key={issue.id} className={`flex gap-2 rounded-xl border p-3 text-xs leading-snug ${borderColors[issue.type]}`}>
+            {icons[issue.type]}
+            <span className="text-primary">{issue.message}</span>
+          </div>
+        ))}
       </div>
     );
   }
-
-  const errors = issues.filter((i) => i.type === "error");
-  const warnings = issues.filter((i) => i.type === "warning");
 
   return (
     <div className="space-y-2">
@@ -48,6 +57,17 @@ export default function ValidationPanel({ issues }: { issues: ValidationIssue[] 
         </p>
       )}
       {warnings.map((issue) => (
+        <div key={issue.id} className={`flex gap-2 rounded-xl border p-3 text-xs leading-snug ${borderColors[issue.type]}`}>
+          {icons[issue.type]}
+          <span className="text-primary">{issue.message}</span>
+        </div>
+      ))}
+      {infos.length > 0 && (
+        <p className="mt-3 text-xs font-semibold text-accent uppercase tracking-wide">
+          {infos.length} info
+        </p>
+      )}
+      {infos.map((issue) => (
         <div key={issue.id} className={`flex gap-2 rounded-xl border p-3 text-xs leading-snug ${borderColors[issue.type]}`}>
           {icons[issue.type]}
           <span className="text-primary">{issue.message}</span>

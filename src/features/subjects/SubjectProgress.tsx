@@ -6,6 +6,7 @@
 // This component receives pre-computed data from getDashboard()
 // and just renders it — no DB access, no interactivity.
 
+import Link from "next/link";
 import type { SubjectProgress as SubjectProgressData } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 
@@ -30,9 +31,10 @@ export default function SubjectProgress({ subjects }: SubjectProgressProps) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {subjects.map((s) => (
-        <div
+        <Link
           key={s.subject}
-          className="rounded-card border border-border bg-surface-muted/70 p-4 shadow-inset transition hover:border-border-strong hover:bg-surface-hover"
+          href={`/materie/${encodeURIComponent(s.subject)}`}
+          className="block rounded-card border border-border bg-surface-muted/70 p-4 shadow-inset transition hover:border-border-strong hover:bg-surface-hover"
         >
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="min-w-0 text-sm font-semibold leading-snug text-primary">
@@ -63,7 +65,7 @@ export default function SubjectProgress({ subjects }: SubjectProgressProps) {
               {s.progress_percent}%
             </span>
           </div>
-        </div>
+        </Link>
       ))}
     </div>
   );

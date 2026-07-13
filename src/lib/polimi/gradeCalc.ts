@@ -1,7 +1,7 @@
 import { getCourse } from "./courses";
 import { GRADE_LAUDE } from "./constraints";
 import type { ExamsMap } from "@/lib/esami";
-import type { Piano } from "@/lib/piano";
+import type { PlanEntry } from "@/lib/piano";
 
 export function parseGrade(grade: string): number | null {
   if (grade === GRADE_LAUDE || grade === "30L") return 31;
@@ -14,27 +14,34 @@ export function displayGrade(numericGrade: number): string {
   return String(numericGrade);
 }
 
-export function weightedAverage(exams: ExamsMap, piano: Piano): { average: number | null; passedCFU: number } {
+export function weightedAverage(exams: ExamsMap, entries: PlanEntry[]): { average: number | null; passedCFU: number } {
   let weightedSum = 0;
-  let totalCFU = 0;
+  let gradedCFU = 0;
+  let passedCFU = 0;
 
-  Object.entries(exams).forEach(([code, exam]) => {
-    if (exam.status !== "passed" || !exam.grade) return;
-    const course = getCourse(code);
+  entries.forEach((entry) => {
+    if (entry.position !== "effective") return;
+    const exam = exams[entry.courseCode];
+    if (exam?.status !== "passed_registered") return;
+    const course = getCourse(entry.courseCode);
     if (!course) return;
-    if (course.type.includes("T") || course.type.includes("V")) return;
     if (course.isLinkedExam) return;
+
+    passedCFU += course.cfu;
+
+    if (course.type.includes("T") || course.type.includes("V")) return;
+    if (!exam.grade) return;
 
     const numGrade = parseGrade(exam.grade);
     if (numGrade === null) return;
 
     weightedSum += numGrade * course.cfu;
-    totalCFU += course.cfu;
+    gradedCFU += course.cfu;
   });
 
   return {
-    average: totalCFU > 0 ? Math.round((weightedSum / totalCFU) * 100) / 100 : null,
-    passedCFU: totalCFU,
+    average: gradedCFU > 0 ? Math.round((weightedSum / gradedCFU) * 100) / 100 : null,
+    passedCFU,
   };
 }
 

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 // StatTile — Server Component
 //
 // A single stat tile: a small label + a big number.
@@ -9,7 +11,7 @@
 
 interface StatTileProps {
   label: string;
-  value: string | number;
+  value: ReactNode;
   accent?: "green" | "red" | "sky" | "amber";
 }
 

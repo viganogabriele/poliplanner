@@ -16,7 +16,7 @@ import { useState, useTransition } from "react";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { saveScheduleAction } from "@/app/actions";
 import { WEEKDAY_LABELS, WORKWEEK } from "@/lib/dates";
-import type { LessonMode, ScheduleRow } from "@/lib/types";
+import { LESSON_MODE_LABELS, type LessonMode, type ScheduleRow } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { fieldLabelClass, inputClass, selectClass } from "@/components/ui/Field";
@@ -44,9 +44,10 @@ function emptyRow(): EditorRow {
 
 interface ScheduleEditorProps {
   initialRows: ScheduleRow[];
+  onSaveSuccess?: () => void;
 }
 
-export default function ScheduleEditor({ initialRows }: ScheduleEditorProps) {
+export default function ScheduleEditor({ initialRows, onSaveSuccess }: ScheduleEditorProps) {
   const [rows, setRows] = useState<EditorRow[]>(
     initialRows.length > 0
       ? initialRows.map(rowFromSchedule)
@@ -88,6 +89,7 @@ export default function ScheduleEditor({ initialRows }: ScheduleEditorProps) {
       const result = await saveScheduleAction(payload);
       if (result.ok) {
         setSuccess(true);
+        onSaveSuccess?.();
         setTimeout(() => setSuccess(false), 2000);
       } else {
         setError(result.error ?? "Errore sconosciuto");
@@ -211,8 +213,8 @@ export default function ScheduleEditor({ initialRows }: ScheduleEditorProps) {
                     }
                     className={selectClass("min-w-0")}
                   >
-                    <option value="asincrona">asincrona</option>
-                    <option value="presenza">presenza</option>
+                    <option value="asincrona">{LESSON_MODE_LABELS.asincrona}</option>
+                    <option value="presenza">{LESSON_MODE_LABELS.presenza}</option>
                   </select>
                 </td>
 
@@ -249,7 +251,7 @@ export default function ScheduleEditor({ initialRows }: ScheduleEditorProps) {
                 </p>
               </div>
               <Badge variant={row.mode === "presenza" ? "active" : "warning"}>
-                {row.mode}
+                {LESSON_MODE_LABELS[row.mode]}
               </Badge>
             </div>
 
@@ -319,8 +321,8 @@ export default function ScheduleEditor({ initialRows }: ScheduleEditorProps) {
                   }
                   className={selectClass()}
                 >
-                  <option value="asincrona">asincrona</option>
-                  <option value="presenza">presenza</option>
+                  <option value="asincrona">{LESSON_MODE_LABELS.asincrona}</option>
+                  <option value="presenza">{LESSON_MODE_LABELS.presenza}</option>
                 </select>
               </label>
 

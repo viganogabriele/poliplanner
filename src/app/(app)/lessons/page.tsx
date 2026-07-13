@@ -26,7 +26,7 @@ export default function LessonsPage() {
         <CardHeader>
           <div>
             <CardTitle>Lezioni da seguire / segnare</CardTitle>
-            <CardDescription>Attivita arretrate e previste per oggi</CardDescription>
+            <CardDescription>Attività arretrate e previste per oggi</CardDescription>
           </div>
         </CardHeader>
         <TodoList items={dashboard.todo_items} />

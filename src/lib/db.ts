@@ -24,7 +24,6 @@ const DB_PATH = path.join(process.cwd(), "db", "lesson_tracker.db");
 // In Next.js dev mode, hot-reload can re-evaluate modules, so we
 // cache on the global object to survive HMR restarts.
 declare global {
-  // eslint-disable-next-line no-var
   var __db: BetterSqlite3.Database | undefined;
 }
 
@@ -42,6 +41,8 @@ function openDb(): BetterSqlite3.Database {
 export function getDb(): BetterSqlite3.Database {
   if (!global.__db) {
     global.__db = openDb();
+  } else {
+    ensureSchema(global.__db);
   }
   return global.__db;
 }

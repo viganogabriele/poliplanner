@@ -1,0 +1,14 @@
+services:
+  poliplanner:
+    build: .
+    container_name: poliplanner
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # Keep the SQLite database outside the image and across container updates.
+      - poliplanner-data:/app/db
+
+volumes:
+  poliplanner-data:
+    name: poliplanner-data

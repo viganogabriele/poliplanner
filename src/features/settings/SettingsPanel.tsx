@@ -4,10 +4,13 @@ import { useState, useTransition } from "react";
 import { AlertCircle, CheckCircle2, Database, RotateCcw } from "lucide-react";
 import { resetDatabaseAction, seedDatabaseAction } from "@/app/actions";
 import { Button } from "@/components/ui/Button";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 export default function SettingsPanel() {
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showSeedConfirm, setShowSeedConfirm] = useState(false);
 
   function handleAction(action: () => Promise<{ ok: boolean; error?: string }>) {
     setMessage(null);
@@ -49,7 +52,7 @@ export default function SettingsPanel() {
           <Button
             type="button"
             variant="primary"
-            onClick={() => handleAction(seedDatabaseAction)}
+            onClick={() => setShowSeedConfirm(true)}
             disabled={isPending}
           >
             <Database className="size-4" aria-hidden="true" />
@@ -59,7 +62,7 @@ export default function SettingsPanel() {
           <Button
             type="button"
             variant="danger"
-            onClick={() => handleAction(resetDatabaseAction)}
+            onClick={() => setShowResetConfirm(true)}
             disabled={isPending}
           >
             <RotateCcw className="size-4" aria-hidden="true" />
@@ -76,6 +79,26 @@ export default function SettingsPanel() {
           </p>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={showResetConfirm}
+        title="Reset database"
+        description="Questa operazione eliminerà tutti i dati (calendario, lezioni, progressi). L'operazione è irreversibile. Continuare?"
+        confirmLabel="Reset"
+        variant="danger"
+        onConfirm={() => { setShowResetConfirm(false); handleAction(resetDatabaseAction); }}
+        onCancel={() => setShowResetConfirm(false)}
+      />
+
+      <ConfirmDialog
+        open={showSeedConfirm}
+        title="Carica dati demo"
+        description="Questa operazione resetterà il database e caricherà dati di esempio. I dati attuali andranno persi. Continuare?"
+        confirmLabel="Carica demo"
+        variant="default"
+        onConfirm={() => { setShowSeedConfirm(false); handleAction(seedDatabaseAction); }}
+        onCancel={() => setShowSeedConfirm(false)}
+      />
     </div>
   );
 }

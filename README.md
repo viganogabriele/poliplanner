@@ -1,145 +1,142 @@
 # Poliplanner
 
-Local, self-hostable planner for university students at **Politecnico di Milano** — tracks weekly lessons and manages the official study plan (*piano di studi*) for Laurea Triennale Ingegneria Informatica (Cod. 358).
+Planner locale e self-hostable per studenti del Politecnico di Milano. Permette di gestire lezioni, materie, esami e scenari del piano di studi di Ingegneria Informatica (codice 531), mantenendo i dati in un singolo database SQLite sul proprio computer o server.
 
-**Stack:** Next.js 16 · App Router · TypeScript · Tailwind CSS 4 · SQLite (via `better-sqlite3`) · pnpm
+> Il controllo del piano è un aiuto offline: prima di una scelta ufficiale verificare sempre le regole e le scadenze nei Servizi Online PoliMi.
 
----
+## Funzionalità
 
-## Features
+| Area | Cosa fa |
+| --- | --- |
+| Dashboard | Riepilogo delle lezioni, progressi per materia, esami e KPI. |
+| Lezioni | Elenco di arretrati/lezioni odierne, completamento ottimistico e modalità presenza/asincrona. |
+| Calendario | Calendario settimanale e modifica delle regole ricorrenti. |
+| Materie | Dettaglio di ciascuna materia, lezioni da recuperare/guardare ed esame collegato. |
+| Piano di studi | Scenari annuali o di revisione, validazione CFU/vincoli, reinserimenti e stima CFU tassabili. |
+| Esami | Stato, data di superamento/registrazione, voto, media pesata e stima del voto di laurea. |
+| PWA | Service worker, manifest e installazione quando supportata dal browser. |
 
-| Page | Description |
-|---|---|
-| **Dashboard** `/dashboard` | Progress overview: lessons done vs pending, today's schedule, per-subject progress bars |
-| **Lezioni** `/lessons` | Backlog of overdue/today lessons with checkbox toggling and optimistic updates |
-| **Calendario** `/calendar` | Weekly schedule editor — add/edit/delete recurring lesson rules by weekday and date range |
-| **Materie** `/subjects` | Per-subject CFU progress breakdown |
-| **Piano di Studi** `/piano` | Full study plan builder for PoliMi Ing. Inf. Cod. 358 — track selector (I3I/I3C), course catalog, CFU validation |
-| **Esami** `/esami` | Exam tracking per course — status, grade (18–30L), weighted average (*media pesata*), estimated graduation grade |
-| **Impostazioni** `/settings` | Seed demo data or reset the database |
+## Stack e requisiti
 
-The app also registers a **service worker** for offline/PWA support and shows a browser install prompt when available.
+Next.js 16, React 19, TypeScript, Tailwind CSS 4 e SQLite (`better-sqlite3`). Non servono servizi esterni, account cloud o variabili d'ambiente.
 
----
+Per lo sviluppo locale:
 
-## Requirements
+- Node.js 20 o successivo (consigliato Node 22 LTS)
+- pnpm 11 o successivo
+- strumenti di compilazione C/C++ solo se `better-sqlite3` non trova un binario precompilato (`python3`, `make`, compilatore C++)
 
-- **Node.js ≥ 20**
-- **pnpm ≥ 11**
-
-No Python, no Docker, no external database.
-
----
-
-## Quick start
+## Avvio locale per sviluppo e modifiche
 
 ```bash
 git clone https://github.com/viganogabriele/poliplanner.git
 cd poliplanner
-
-# Install dependencies (better-sqlite3 compiles its native module here)
+corepack enable
 pnpm install
 
-# Optional: seed the database with demo lesson data
+# Facoltativo: elimina eventuali dati e carica dati demo
 pnpm db:seed
 
-# Start the development server
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Apri <http://localhost:3000>. Le modifiche ai file sotto `src/` aggiornano l'app in sviluppo automaticamente.
 
----
-
-## Production
+### Comandi utili
 
 ```bash
-pnpm build
-pnpm start
-
-# Custom port:
+pnpm lint          # controlli ESLint
+pnpm test:polimi   # test dei vincoli del piano di studi
+pnpm build         # build di produzione; deve passare prima del deploy
+pnpm start         # serve la build su http://localhost:3000
 PORT=8333 pnpm start
 ```
 
-Everything runs from a single Node.js process — no separate backend needed.
+`pnpm db:seed` e `pnpm db:reset` sono distruttivi: ricreano il database e inseriscono dati demo. Non usarli su un'installazione con dati reali.
 
----
+## Dati e backup
+
+Il database viene creato automaticamente in `db/lesson_tracker.db`; non è incluso in Git. SQLite usa anche file temporanei `-wal` e `-shm` mentre l'app è in esecuzione.
+
+Per un backup coerente, fermare l'app/contenitore e copiare l'intera directory `db/`. Per un'istanza Docker, il volume si chiama `poliplanner-data`:
+
+```bash
+docker compose stop
+docker run --rm -v poliplanner-data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/poliplanner-db-$(date +%F).tar.gz -C /data .
+docker compose start
+```
+
+Conservare il backup fuori dal server. Per ripristinarlo, fermare l'app, svuotare il database corrente e riestrarre l'archivio nella stessa directory/volume.
+
+## Deploy e self-hosting
+
+### Opzione A — Node.js sul server
+
+Sul server clona il repository, installa Node/pnpm e avvia la build:
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm build
+PORT=3000 pnpm start
+```
+
+Per tenerla attiva dopo il logout usare un gestore di processi (systemd, PM2 o equivalente) con directory di lavoro impostata alla root del repository. Il suo utente deve poter scrivere in `db/`. Dopo un aggiornamento eseguire `git pull`, `pnpm install --frozen-lockfile`, `pnpm build` e riavviare il processo; fare prima un backup della directory `db/`.
+
+### Opzione B — Docker Compose (consigliata)
+
+Il repository include `Dockerfile` e `compose.yaml`. L'immagine contiene una build Next.js standalone; il database resta nel volume nominato e quindi sopravvive a rebuild/ricreazione del container.
+
+```bash
+git clone https://github.com/viganogabriele/poliplanner.git
+cd poliplanner
+docker compose up -d --build
+docker compose logs -f
+```
+
+L'app risponde sulla porta `3000` del server. Per aggiornare:
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+### Esposizione sicura
+
+Poliplanner **non ha autenticazione né gestione multiutente**. Non pubblicare `http://server:3000` direttamente su Internet: chiunque possa raggiungerla può leggere, modificare o cancellare i dati. Usarla in LAN/VPN oppure metterla dietro un reverse proxy HTTPS con autenticazione (ad esempio Authelia, OAuth2 Proxy, Cloudflare Access o l'autenticazione del proprio proxy) e limitare l'accesso alle persone fidate.
+
+Se usi un proxy sullo stesso server, limita la porta del compose a localhost modificando `compose.yaml` in `"127.0.0.1:3000:3000"`, poi fai puntare il proxy a `http://127.0.0.1:3000`.
+
+## Struttura e guida per contributori/LLM
+
+La mappa dell'architettura, i flussi dati, i confini del dominio e le convenzioni sono in [AGENTS.md](AGENTS.md). È un documento intenzionalmente compatto: leggilo prima di modificare il codice, sia come contributore sia come assistente AI.
+
+In sintesi:
+
+```text
+src/app            route, layout e Server Actions
+src/features       UI e interazioni per dominio
+src/components     componenti di layout/UI riusabili
+src/lib            logica applicativa, SQLite, tipi e validatore PoliMi
+src/lib/polimi     catalogo corsi, vincoli e calcoli del piano
+src/scripts        seed e test eseguibili
+public             asset PWA
+db                 dati SQLite locali (ignorati da Git)
+```
 
 ## Database
 
-SQLite at `db/lesson_tracker.db` (created automatically on first run). The `db/` directory is tracked by git but the `.db` files are in `.gitignore`.
+| Tabella | Responsabilità |
+| --- | --- |
+| `schedule` | Regole di lezione ricorrenti per giorno/data/modalità. |
+| `lesson_occurrence` | Occorrenze concrete materializzate, incluso il flag di completamento. |
+| `settings` | Configurazione chiave-valore, incluso il percorso scelto. |
+| `study_plan` | Tabella legacy, mantenuta per compatibilità. |
+| `study_plan_cycles` | Metadati degli scenari del piano per anno accademico e stato. |
+| `study_plan_entries` | Insegnamenti di uno scenario e relativi attributi. |
+| `exams` | Stato, voto e date degli esami per codice corso. |
 
-| Table | Purpose |
-|---|---|
-| `schedule` | Recurring lesson rules (weekday, subject, date range, mode) |
-| `lesson_occurrence` | Materialized concrete lesson dates with done/not-done flag |
-| `settings` | Key-value store (e.g. selected track: I3I/I3C) |
-| `study_plan` | Courses selected in the piano di studi per year |
-| `exams` | Exam status and grade per course code |
+## Licenza
 
-```bash
-# Wipe and reseed with demo data
-pnpm db:seed
-```
-
----
-
-## Repository structure
-
-```
-src/
-  app/
-    (app)/              Route group — all pages share the sidebar layout
-      dashboard/
-      lessons/
-      calendar/
-      subjects/
-      piano/            Piano di Studi
-      esami/            Esami & voti
-      settings/
-    layout.tsx          Root layout — fonts, metadata, SW registration
-    actions.ts          All Server Actions (writes + revalidation)
-    globals.css         Tailwind 4 + design tokens (dark theme)
-  components/
-    layout/AppNav.tsx   Sidebar (desktop) + top header + bottom tab bar (mobile)
-    ui/                 Badge, Button, Card, Field, LiveClock, PageShell, StatTile,
-                        PwaInstallButton, ServiceWorkerRegistrar
-  features/
-    dashboard/          ProgressChart, TodayPanel
-    lessons/            TodoList (optimistic checkboxes)
-    calendar/           WeeklyGrid, ScheduleEditor
-    subjects/           SubjectProgress
-    piano/              PianoClient, ValidationPanel, AddCourseModal
-    esami/              EsamiClient
-  lib/
-    polimi/
-      courses.ts        Complete PoliMi Ing. Inf. Cod. 358 course catalog
-      constraints.ts    Graduation rules (CFU minimums, TABA, TABREC, …)
-      cfuCalc.ts        CFU aggregation utilities
-      gradeCalc.ts      Weighted average, laurea estimate
-      validation.ts     Plan validation — returns typed issues list
-    db.ts               better-sqlite3 singleton (WAL mode, survives HMR)
-    schema.ts           CREATE TABLE statements + resetDatabase()
-    schedule.ts         Schedule read/write + occurrence regeneration
-    dashboard.ts        Dashboard queries, lesson toggle, reset completions
-    piano.ts            Study plan DB operations + buildDefaultPiano()
-    esami.ts            Exam status/grade DB operations
-    seed.ts             Demo data for the lesson tracker
-    types.ts, dates.ts, ui.ts
-
-public/
-  sw.js                 Service worker (cache-first for static chunks, network-first for HTML)
-  manifest.webmanifest  PWA manifest
-
-db/                     SQLite database (gitignored)
-```
-
----
-
-## Architecture
-
-- **Server Components** read from SQLite directly — no REST API needed for reads.
-- **Server Actions** (`actions.ts`) handle all writes; each calls `revalidatePath("/")` to trigger a fresh render.
-- **Client Components** (`"use client"`) are used only for interactivity: chart, live clock, lesson checkboxes, schedule editor, piano editor, exam status/grade controls.
-- Lesson occurrences are a **materialized table** — regenerated from the schedule on every save, `done` state preserved for unchanged dates.
-- The **Piano di Studi** is specific to PoliMi Ingegneria Informatica (Cod. 358). To adapt to a different degree, replace `src/lib/polimi/courses.ts` and `src/lib/polimi/constraints.ts`.
+Questo progetto è distribuito secondo i termini del file [LICENSE](LICENSE).

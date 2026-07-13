@@ -19,8 +19,8 @@ import ServiceWorkerRegistrar from "@/components/ui/ServiceWorkerRegistrar";
 import type { Viewport } from "next";
 
 export const metadata: Metadata = {
-  title: "Lesson Tracker",
-  description: "Planner locale per lezioni in presenza e asincrone",
+  title: "Poliplanner",
+  description: "Il tuo planner universitario — lezioni, esami e piano di studi",
   manifest: "/manifest.webmanifest",
 };
 

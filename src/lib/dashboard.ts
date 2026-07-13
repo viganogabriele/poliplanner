@@ -7,6 +7,8 @@
 
 import { getDb } from "./db";
 import { WEEKDAY_LABELS, today, toISODate } from "./dates";
+import { getExams } from "./esami";
+import { weightedAverage } from "./polimi/gradeCalc";
 import type {
   DashboardPayload,
   SubjectProgress,
@@ -110,6 +112,38 @@ export function getDashboard(): DashboardPayload {
     };
   });
 
+  // --- Exam stats ---
+  const examsMap = getExams();
+  const db2 = getDb();
+  // Get all effective entries from the active/ready/draft scenario
+  const planEntryRows = db2.prepare(`
+    SELECT spe.course_code
+    FROM study_plan_entries spe
+    JOIN study_plan_cycles spc ON spe.cycle_id = spc.id
+    WHERE spe.position = 'effective' AND spc.status != 'archived'
+    ORDER BY spc.id DESC
+  `).all() as { course_code: string }[];
+  // Deduplicate by course_code (latest cycle wins)
+  const seenCodes = new Set<string>();
+  const effectiveCodes: string[] = [];
+  for (const row of planEntryRows) {
+    if (!seenCodes.has(row.course_code)) {
+      seenCodes.add(row.course_code);
+      effectiveCodes.push(row.course_code);
+    }
+  }
+  const exam_total_count = effectiveCodes.length;
+  const exam_passed_count = effectiveCodes.filter(code =>
+    examsMap[code]?.status === 'passed_registered'
+  ).length;
+  // Weighted average: read from weightedAverage using exams and a minimal entries array
+  // Build minimal PlanEntry-like objects for weightedAverage
+  const minimalEntries = effectiveCodes.map(code => ({
+    courseCode: code, position: 'effective' as const, feeCounted: true, origin: 'recommended' as const,
+    courseYear: 1 as const, isNewFrequency: true, id: null, cycleId: null, createdAt: ''
+  }));
+  const { average: exam_average } = weightedAverage(examsMap, minimalEntries);
+
   return {
     today: todayStr,
     today_weekday: WEEKDAY_LABELS[now.getDay() === 0 ? 6 : now.getDay() - 1],
@@ -120,6 +154,9 @@ export function getDashboard(): DashboardPayload {
     progress_percent,
     todo_items,
     subject_progress,
+    exam_total_count,
+    exam_passed_count,
+    exam_average,
   };
 }
 
@@ -141,4 +178,13 @@ export function resetCompletions(): void {
 /** Today's ISO date string and formatted time, for the "Oggi" panel. */
 export function getNowTime(): string {
   return toISODate(new Date());
+}
+
+/** Update the mode of a single lesson occurrence. */
+export function setLessonMode(id: number, mode: import("./types").LessonMode): void {
+  if (mode !== "presenza" && mode !== "asincrona") {
+    throw new Error("Modalità lezione non valida.");
+  }
+  const db = getDb();
+  db.prepare("UPDATE lesson_occurrence SET mode = ? WHERE id = ?").run(mode, id);
 }

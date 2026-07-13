@@ -1,0 +1,10 @@
+.git
+.next
+node_modules
+db
+coverage
+*.log
+.env*
+README.md
+AGENTS.md
+ARCHITECTURE.md

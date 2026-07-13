@@ -8,7 +8,7 @@
 // No interactivity needed → Server Component.
 
 import { WEEKDAY_LABELS, WORKWEEK } from "@/lib/dates";
-import type { ScheduleRow } from "@/lib/types";
+import { LESSON_MODE_LABELS, type ScheduleRow } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 
 interface WeeklyGridProps {
@@ -56,7 +56,7 @@ export default function WeeklyGrid({ rows }: WeeklyGridProps) {
                     variant={row.mode === "presenza" ? "active" : "warning"}
                     className="mt-2 px-2 py-0.5 text-[11px]"
                   >
-                    {row.mode}
+                    {LESSON_MODE_LABELS[row.mode]}
                   </Badge>
                 </div>
               ))

@@ -1,10 +1,10 @@
 {
-  "name": "Lesson Tracker",
-  "short_name": "Tracker",
+  "name": "Poliplanner",
+  "short_name": "Poliplanner",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#020617",
-  "description": "Planner locale per lezioni in presenza e asincrone",
+  "description": "Planner universitario locale per lezioni, esami e piano di studi",
   "icons": []
 }

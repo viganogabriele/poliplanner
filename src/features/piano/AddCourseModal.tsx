@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { X, Search } from "lucide-react";
 import { COURSES } from "@/lib/polimi/courses";
+import { activityCategoryForCourse } from "@/lib/polimi/cfuCalc";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/ui";
 import type { Track } from "@/lib/polimi/constraints";
@@ -21,6 +22,7 @@ const TYPE_COLORS: Record<string, string> = {
   A: "bg-sky-500/20 text-sky-300",
   B: "bg-violet-500/20 text-violet-300",
   C: "bg-amber-500/20 text-amber-300",
+  D: "bg-fuchsia-500/20 text-fuchsia-300",
   V: "bg-emerald-500/20 text-emerald-300",
   T: "bg-rose-500/20 text-rose-300",
 };
@@ -79,28 +81,36 @@ export default function AddCourseModal({ isOpen, onClose, year, track, piano, on
           {available.length === 0 && (
             <p className="py-8 text-center text-sm text-muted">Nessun corso disponibile.</p>
           )}
-          {available.map((course) => (
-            <button
-              key={course.code}
-              onClick={() => { onAdd(course.code); onClose(); setSearch(""); }}
-              className={cn(
-                "w-full flex items-center justify-between gap-3 rounded-xl border border-transparent px-4 py-3 text-left transition",
-                "hover:border-border hover:bg-surface-hover"
-              )}
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-primary">{course.name}</p>
-                <p className="text-xs text-muted">{course.code} · Anno {course.year} · {course.cfu} CFU</p>
-              </div>
-              <div className="flex shrink-0 gap-1">
-                {course.type.map((t) => (
-                  <span key={t} className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold", TYPE_COLORS[t] ?? "bg-surface text-muted")}>
-                    {t}
-                  </span>
-                ))}
-              </div>
-            </button>
-          ))}
+          {available.map((course) => {
+            const activityCategory = activityCategoryForCourse(course);
+            return (
+              <button
+                key={course.code}
+                onClick={() => { onAdd(course.code); onClose(); setSearch(""); }}
+                className={cn(
+                  "w-full flex items-center justify-between gap-3 rounded-xl border border-transparent px-4 py-3 text-left transition",
+                  "hover:border-border hover:bg-surface-hover"
+                )}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-primary">{course.name}</p>
+                  <p className="text-xs text-muted">{course.code} · Anno {course.year} · {course.cfu} CFU</p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  {!(course.type as string[]).includes(activityCategory) && (
+                    <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold", TYPE_COLORS[activityCategory] ?? "bg-surface text-muted")}>
+                      {activityCategory}
+                    </span>
+                  )}
+                  {course.type.map((t) => (
+                    <span key={t} className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold", TYPE_COLORS[t] ?? "bg-surface text-muted")}>
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         <div className="border-t border-border px-4 py-3">

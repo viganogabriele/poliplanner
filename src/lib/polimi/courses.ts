@@ -1,4 +1,4 @@
-/** Complete course catalog – Laurea Triennale Ingegneria Informatica Cod. 358, Politecnico di Milano */
+/** Course catalog – Laurea Triennale Ingegneria Informatica Cod. 531, Politecnico di Milano */
 
 export type CourseType = "A" | "B" | "C" | "V" | "T";
 export type Semester = 1 | 2 | "A";

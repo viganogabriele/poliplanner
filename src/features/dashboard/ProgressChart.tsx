@@ -9,6 +9,7 @@
 // We use react-chartjs-2, a thin React wrapper around Chart.js.
 // It handles creating and destroying the chart as React re-renders.
 
+import { useReducedMotion } from "motion/react";
 import { Doughnut } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -28,6 +29,8 @@ interface ProgressChartProps {
 }
 
 export default function ProgressChart({ done, pending }: ProgressChartProps) {
+  const reducedMotionPreference = useReducedMotion();
+  const prefersReduced = Boolean(reducedMotionPreference);
   const total = done + pending;
 
   if (total === 0) {
@@ -59,7 +62,7 @@ export default function ProgressChart({ done, pending }: ProgressChartProps) {
     responsive: true,
     maintainAspectRatio: false,
     cutout: "72%",
-    animation: false as const,
+    animation: prefersReduced ? false : { duration: 700, easing: 'easeInOutQuart' as const },
     plugins: {
       legend: {
         display: false,
