@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, ChevronUp, ClipboardCheck, CopyPlus, GraduationCap, History, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, Archive, ArchiveRestore, BookOpen, CheckCircle2, ChevronDown, ChevronUp, ClipboardCheck, CopyPlus, GitBranchPlus, GraduationCap, History, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import InfoButton from "@/components/ui/InfoButton";
 import { PIANO_GUIDE_SECTIONS, ACTIVITY_CATEGORY_DETAILS } from "@/lib/polimi/guide";
@@ -12,9 +13,14 @@ import { ACADEMIC_YEAR, PROGRAM_IDENTITY, TRACKS } from "@/lib/polimi/constraint
 import { originForAddedCourse, planEntriesToPiano, toDraftEntry } from "@/lib/polimi/planTransforms";
 import {
   duplicatePlanForNextAcademicYearAction,
+  archivePlanCycleAction,
+  createAnnualDraftAction,
+  createSecondSemesterRevisionAction,
   markPlanCompiledOnPolimiAction,
   markPlanReadyAction,
+  restorePlanCycleAction,
   savePlanDraftAction,
+  setActivePlanCycleAction,
 } from "@/app/actions";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -23,12 +29,14 @@ import ValidationPanel from "./ValidationPanel";
 import AddCourseModal from "./AddCourseModal";
 import { cn } from "@/lib/ui";
 import type { ExamsMap } from "@/lib/esami";
-import type { PlanDraftPayload, PlanEntry, PlanScenario } from "@/lib/piano";
+import type { PlanCycle, PlanDraftPayload, PlanEntry, PlanScenario } from "@/lib/piano";
 import type { PreviousCompiledEntry } from "@/lib/polimi/validation";
 import type { EntryOrigin, EntryPosition, PlanStatus, PlanValidationMode, Track } from "@/lib/polimi/constraints";
 
 type Props = {
   initialScenario: PlanScenario;
+  initialCycles: PlanCycle[];
+  activeCycleId: number | null;
   initialExams: ExamsMap;
   previousCompiledEntries: PreviousCompiledEntry[];
   baseRevisionScenario: PlanScenario | null;
@@ -49,7 +57,6 @@ const STATUS_LABEL: Record<PlanStatus, string> = {
   draft: "Bozza",
   ready: "Pronto da compilare",
   polimi_compiled: "Compilato su PoliMi",
-  archived: "Archiviato",
 };
 
 const MODE_LABEL: Record<PlanValidationMode, string> = {
@@ -67,7 +74,8 @@ const ORIGIN_LABEL: Record<EntryOrigin, string> = {
 
 const REINSERTION_ORIGINS: EntryOrigin[] = ["carried_over", "recovery_reinserted"];
 
-export default function PianoClient({ initialScenario, initialExams, previousCompiledEntries, baseRevisionScenario }: Props) {
+export default function PianoClient({ initialScenario, initialCycles, activeCycleId, initialExams, previousCompiledEntries, baseRevisionScenario }: Props) {
+  const router = useRouter();
   const [scenario, setScenario] = useState<PlanScenario>(initialScenario);
   const [activeYear, setActiveYear] = useState<1 | 2 | 3>(initialScenario.cycle.studentYear);
   const [modalOpen, setModalOpen] = useState(false);
@@ -83,6 +91,9 @@ export default function PianoClient({ initialScenario, initialExams, previousCom
   const [showReinsertions, setShowReinsertions] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [showMoreActions, setShowMoreActions] = useState(false);
+  const [newAcademicYear, setNewAcademicYear] = useState(initialScenario.cycle.academicYear);
+  const [newStudentYear, setNewStudentYear] = useState<1 | 2 | 3>(initialScenario.cycle.studentYear);
+  const [newTrack, setNewTrack] = useState<Track>(initialScenario.cycle.track);
 
   const validation = useMemo(() => validatePlanScenario(scenario, {
     exams: initialExams,
@@ -97,7 +108,7 @@ export default function PianoClient({ initialScenario, initialExams, previousCom
   const warnings = validation.issues.filter((issue) => issue.type === "warning");
   const reinsertionsExpanded = missingReinsertions.length > 0 || showReinsertions;
   const summaryExpanded = errors.length > 0 || showSummary;
-  const isHistorical = scenario.cycle.status === "polimi_compiled";
+  const isHistorical = scenario.cycle.status === "polimi_compiled" || Boolean(scenario.cycle.archivedAt);
   const compiledCycles = new Set(previousCompiledEntries.map(({ cycle }) => cycle.id).filter(Boolean));
   const needsHistoricalSetup = !isHistorical && scenario.cycle.studentYear > 1 && compiledCycles.size === 0;
 
@@ -132,13 +143,13 @@ export default function PianoClient({ initialScenario, initialExams, previousCom
 
   const persistDraft = async (source = scenario) => {
     const result = await savePlanDraftAction(payloadFor(source));
-    if (!result.ok || !result.scenario) {
+    if (!result.ok) {
       setSaveMsg({ ok: false, text: result.error ?? "Errore salvataggio." });
       return null;
     }
-    setScenario(result.scenario);
+    setScenario(result.data);
     setSaveMsg({ ok: true, text: "Bozza salvata." });
-    return result.scenario;
+    return result.data;
   };
 
   const addEntry = (code: string, origin: EntryOrigin = originForAddedCourse(code), position: EntryPosition = "effective") => {
@@ -152,7 +163,7 @@ export default function PianoClient({ initialScenario, initialExams, previousCom
         return {
           ...prev,
           entries: prev.entries.map((entry) => entry.courseCode === code
-            ? { ...entry, position: "effective", origin, isNewFrequency: false, feeCounted: true }
+            ? { ...entry, position: "effective", origin, isNewFrequency: false, feeCounted: false }
             : entry
           ),
         };
@@ -163,6 +174,10 @@ export default function PianoClient({ initialScenario, initialExams, previousCom
           cycleId: prev.cycle.id,
           courseCode: code,
           courseYear: course.year,
+          semester: course.semester === "A" ? 1 : course.semester,
+          entryKind: "catalog",
+          externalName: null,
+          externalCfu: null,
           position,
           origin,
           isNewFrequency: true,
@@ -178,6 +193,10 @@ export default function PianoClient({ initialScenario, initialExams, previousCom
             cycleId: prev.cycle.id,
             courseCode: linked.code,
             courseYear: linkedCourse.year,
+            semester: linkedCourse.semester === "A" ? 1 : linkedCourse.semester,
+            entryKind: "catalog",
+            externalName: null,
+            externalCfu: null,
             position,
             origin,
             isNewFrequency: true,
@@ -221,8 +240,8 @@ export default function PianoClient({ initialScenario, initialExams, previousCom
       const saved = await persistDraft();
       if (!saved?.cycle.id) return;
       const result = await markPlanReadyAction(saved.cycle.id);
-      if (result.ok && result.scenario) {
-        setScenario(result.scenario);
+      if (result.ok) {
+        setScenario(result.data);
         setSaveMsg({ ok: true, text: "Scenario marcato come pronto." });
       } else {
         setSaveMsg({ ok: false, text: result.error ?? "Scenario non pronto." });
@@ -232,11 +251,13 @@ export default function PianoClient({ initialScenario, initialExams, previousCom
 
   const markCompiled = () => {
     startTransition(async () => {
-      const saved = await persistDraft();
-      if (!saved?.cycle.id) return;
-      const result = await markPlanCompiledOnPolimiAction(saved.cycle.id);
-      if (result.ok && result.scenario) {
-        setScenario(result.scenario);
+      if (!scenario.cycle.id || scenario.cycle.status !== "ready") {
+        setSaveMsg({ ok: false, text: "Prima valida e marca lo scenario come pronto." });
+        return;
+      }
+      const result = await markPlanCompiledOnPolimiAction(scenario.cycle.id);
+      if (result.ok) {
+        setScenario(result.data);
         setSaveMsg({ ok: true, text: "Scenario segnato come compilato su PoliMi." });
       } else {
         setSaveMsg({ ok: false, text: result.error ?? "Impossibile segnare come compilato." });
@@ -249,19 +270,119 @@ export default function PianoClient({ initialScenario, initialExams, previousCom
       const saved = isHistorical ? scenario : await persistDraft();
       if (!saved?.cycle.id) return;
       const result = await duplicatePlanForNextAcademicYearAction(saved.cycle.id);
-      if (result.ok && result.scenario) {
-        setScenario(result.scenario);
-        setActiveYear(result.scenario.cycle.studentYear);
-        setSaveMsg({ ok: true, text: `Creato scenario ${result.scenario.cycle.academicYear}.` });
+      if (result.ok) {
+        setScenario(result.data);
+        setActiveYear(result.data.cycle.studentYear);
+        setSaveMsg({ ok: true, text: `Creato scenario ${result.data.cycle.academicYear}.` });
       } else {
         setSaveMsg({ ok: false, text: result.error ?? "Duplicazione non riuscita." });
       }
     });
   };
 
+  const openScenario = (cycleId: number) => router.push(`/piano?scenario=${cycleId}`);
+
+  const createAnnual = () => {
+    startTransition(async () => {
+      const result = await createAnnualDraftAction(newAcademicYear, newStudentYear, newTrack);
+      if (!result.ok) return setSaveMsg({ ok: false, text: result.error });
+      router.push(`/piano?scenario=${result.data.cycle.id}`);
+      router.refresh();
+    });
+  };
+
+  const activateScenario = () => {
+    if (!scenario.cycle.id) return;
+    startTransition(async () => {
+      const result = await setActivePlanCycleAction(scenario.cycle.id);
+      if (!result.ok) return setSaveMsg({ ok: false, text: result.error });
+      setSaveMsg({ ok: true, text: "Scenario impostato come attivo." });
+      router.refresh();
+    });
+  };
+
+  const archiveScenario = () => {
+    if (!scenario.cycle.id) return;
+    startTransition(async () => {
+      const result = await archivePlanCycleAction(scenario.cycle.id);
+      if (!result.ok) return setSaveMsg({ ok: false, text: result.error });
+      router.push("/piano");
+      router.refresh();
+    });
+  };
+
+  const restoreScenario = () => {
+    if (!scenario.cycle.id) return;
+    startTransition(async () => {
+      const result = await restorePlanCycleAction(scenario.cycle.id);
+      if (!result.ok) return setSaveMsg({ ok: false, text: result.error });
+      setSaveMsg({ ok: true, text: "Scenario ripristinato." });
+      router.refresh();
+    });
+  };
+
+  const createRevision = () => {
+    if (!scenario.cycle.id) return;
+    startTransition(async () => {
+      const result = await createSecondSemesterRevisionAction(scenario.cycle.id);
+      if (!result.ok) return setSaveMsg({ ok: false, text: result.error });
+      router.push(`/piano?scenario=${result.data.cycle.id}`);
+      router.refresh();
+    });
+  };
+
   return (
     <div className="flex min-h-[calc(100vh-10rem)] overflow-hidden rounded-panel border border-border bg-background-soft shadow-card">
       <div className="flex-1 overflow-y-auto p-4 pb-8 space-y-5 sm:p-5">
+        <Card>
+          <CardHeader>
+            <div>
+              <CardTitle>Scenari del piano</CardTitle>
+              <p className="mt-1 text-xs text-muted">Consulta gli storici senza cambiare il piano usato da dashboard ed esami.</p>
+            </div>
+            {scenario.cycle.id === activeCycleId && <Badge variant="active">Attivo</Badge>}
+          </CardHeader>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <select
+              aria-label="Scenario da consultare"
+              value={scenario.cycle.id ?? ""}
+              onChange={(event) => openScenario(Number(event.target.value))}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none"
+            >
+              {scenario.cycle.id === null && <option value="">Nuovo piano consigliato non salvato</option>}
+              {initialCycles.map((cycle) => (
+                <option key={cycle.id} value={cycle.id ?? ""}>
+                  {cycle.academicYear} · anno {cycle.studentYear} · {cycle.track} · {STATUS_LABEL[cycle.status]}{cycle.archivedAt ? " · archiviato" : ""}{cycle.id === activeCycleId ? " · attivo" : ""}
+                </option>
+              ))}
+            </select>
+            <div className="flex flex-wrap gap-2">
+              {scenario.cycle.id !== null && scenario.cycle.status !== "polimi_compiled" && !scenario.cycle.archivedAt && scenario.cycle.id !== activeCycleId && (
+                <Button variant="secondary" size="sm" onClick={activateScenario} disabled={isPending}>Imposta attivo</Button>
+              )}
+              {scenario.cycle.id !== null && !scenario.cycle.archivedAt && (
+                <Button variant="ghost" size="sm" onClick={archiveScenario} disabled={isPending}><Archive className="size-4" />Archivia</Button>
+              )}
+              {scenario.cycle.id !== null && scenario.cycle.archivedAt && (
+                <Button variant="ghost" size="sm" onClick={restoreScenario} disabled={isPending}><ArchiveRestore className="size-4" />Ripristina</Button>
+              )}
+              {scenario.cycle.status === "polimi_compiled" && !scenario.cycle.archivedAt && (
+                <Button variant="ghost" size="sm" onClick={createRevision} disabled={isPending}><GitBranchPlus className="size-4" />Revisione 2° semestre</Button>
+              )}
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 border-t border-border pt-4 sm:grid-cols-4">
+            <input aria-label="Anno accademico nuova bozza" value={newAcademicYear} onChange={(e) => setNewAcademicYear(e.target.value)} className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary" />
+            <select aria-label="Anno studente nuova bozza" value={newStudentYear} onChange={(e) => setNewStudentYear(Number(e.target.value) as 1 | 2 | 3)} className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary">
+              <option value={1}>Anno 1</option><option value={2}>Anno 2</option><option value={3}>Anno 3</option>
+            </select>
+            <select aria-label="Percorso nuova bozza" value={newTrack} onChange={(e) => setNewTrack(e.target.value as Track)} className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary">
+              <option value="I3I">I3I</option><option value="I3C">I3C</option>
+            </select>
+            <Button variant="primary" onClick={createAnnual} disabled={isPending}><Plus className="size-4" />Crea bozza annuale</Button>
+          </div>
+        </Card>
+
         <Card>
           <CardHeader>
             <div>
@@ -341,18 +462,12 @@ export default function PianoClient({ initialScenario, initialExams, previousCom
                 ))}
               </select>
             </label>
-            <label className="space-y-1">
+            <div className="space-y-1">
               <span className="text-xs font-semibold text-muted">Validazione</span>
-              <select
-                value={scenario.cycle.validationMode}
-                disabled={isHistorical}
-                onChange={(e) => setDirtyScenario((prev) => ({ ...prev, cycle: { ...prev.cycle, validationMode: e.target.value as PlanValidationMode } }))}
-                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none disabled:opacity-60"
-              >
-                <option value="annual_submission">{MODE_LABEL.annual_submission}</option>
-                <option value="second_semester_revision">{MODE_LABEL.second_semester_revision}</option>
-              </select>
-            </label>
+              <p className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary">
+                {MODE_LABEL[scenario.cycle.validationMode]}
+              </p>
+            </div>
                 </div>
               </motion.div>
             )}
@@ -396,14 +511,14 @@ export default function PianoClient({ initialScenario, initialExams, previousCom
                   <History className="size-5" />
                 </span>
                 <div>
-                  <h3 className="text-sm font-semibold text-primary">Storico PoliMi congelato</h3>
-                  <p className="mt-1 text-sm text-muted">Questo scenario conta come piano realmente compilato. Per pianificare l&apos;anno dopo crea una nuova bozza.</p>
+                  <h3 className="text-sm font-semibold text-primary">{scenario.cycle.status === "polimi_compiled" ? "Storico PoliMi congelato" : "Scenario archiviato"}</h3>
+                  <p className="mt-1 text-sm text-muted">{scenario.cycle.status === "polimi_compiled" ? "Questo scenario conta come piano realmente compilato." : "Questo scenario è disponibile in sola lettura finché non viene ripristinato."}</p>
                 </div>
               </div>
-              <Button variant="primary" onClick={duplicateNextYear} disabled={isPending}>
+              {scenario.cycle.status === "polimi_compiled" && <Button variant="primary" onClick={duplicateNextYear} disabled={isPending}>
                 <CopyPlus className="size-4" />
                 Crea bozza prossimo AA
-              </Button>
+              </Button>}
             </div>
           </Card>
         )}
@@ -514,7 +629,7 @@ export default function PianoClient({ initialScenario, initialExams, previousCom
         </div>
 
         {[1, 2, "A" as const].map((sem) => {
-          const semEntries = yearEntries.filter((entry) => getCourse(entry.courseCode)?.semester === sem);
+          const semEntries = yearEntries.filter((entry) => entry.semester === sem);
           const cfu = sumCFU(semEntries.map((entry) => getCourse(entry.courseCode)).filter(isVisibleCourse));
           return (
             <Card key={String(sem)}>
@@ -607,9 +722,6 @@ export default function PianoClient({ initialScenario, initialExams, previousCom
                       </button>
                       <button type="button" onClick={() => { markCompiled(); setShowMoreActions(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-secondary hover:bg-surface-hover hover:text-primary transition">
                         <GraduationCap className="size-4" /> Ho copiato su PoliMi
-                      </button>
-                      <button type="button" onClick={() => { duplicateNextYear(); setShowMoreActions(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-secondary hover:bg-surface-hover hover:text-primary transition">
-                        <CopyPlus className="size-4" /> Crea bozza prossimo AA
                       </button>
                     </motion.div>
                   )}

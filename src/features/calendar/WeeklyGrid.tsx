@@ -25,7 +25,7 @@ export default function WeeklyGrid({ rows }: WeeklyGridProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
       {WORKWEEK.map((wd) => {
         const dayRows = byWeekday.get(wd) ?? [];
         return (
@@ -49,6 +49,7 @@ export default function WeeklyGrid({ rows }: WeeklyGridProps) {
                   <div className="font-medium leading-snug text-primary">
                     {row.subject}
                   </div>
+                  {row.course_code && <div className="mt-1 font-mono text-muted">{row.course_code}</div>}
                   <div className="mt-1 text-muted">
                     {row.start_date} → {row.end_date}
                   </div>

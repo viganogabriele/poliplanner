@@ -1,11 +1,3 @@
-// ============================================================
-// Date utilities and weekday constants
-// ============================================================
-// By storing weekday as an integer (0 = Monday … 6 = Sunday) in
-// the database, we keep storage format-agnostic and put the Italian
-// labels here, in code, where they belong.
-
-/** Italian weekday labels indexed by our convention: 0 = Monday. */
 export const WEEKDAY_LABELS: Record<number, string> = {
   0: "Lunedì",
   1: "Martedì",
@@ -16,59 +8,68 @@ export const WEEKDAY_LABELS: Record<number, string> = {
   6: "Domenica",
 };
 
-/**
- * Weekdays shown in the schedule editor and weekly grid.
- * We include only Mon–Fri in the UI grid (same as original app),
- * but the full schedule can technically include Sat/Sun.
- */
-export const WORKWEEK = [0, 1, 2, 3, 4] as const;
+export const WORKWEEK = [0, 1, 2, 3, 4, 5, 6] as const;
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const MIN_YEAR = 2000;
+const MAX_YEAR = 2100;
 
-/**
- * Convert a JS Date to our weekday integer (0 = Monday).
- * JS Date.getDay() returns 0 = Sunday; we remap to Monday-first.
- */
-export function dateToWeekday(d: Date): number {
-  return (d.getDay() + 6) % 7; // Sun(0)->6, Mon(1)->0, Tue(2)->1, …
+export function isISODate(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = ISO_DATE.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < MIN_YEAR || year > MAX_YEAR || month < 1 || month > 12 || day < 1) return false;
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
 }
 
-/**
- * Return an ISO date string "YYYY-MM-DD" for a given Date,
- * always in local time (not UTC), matching how SQLite stores dates.
- */
-export function toISODate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+export function parseISODate(value: string): Date {
+  if (!isISODate(value)) throw new Error(`Data non valida: ${value}`);
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
-/**
- * Parse an ISO date string and return a plain Date at midnight local time.
- * "YYYY-MM-DD" → new Date(year, month-1, day)
- */
-export function parseISODate(s: string): Date {
-  const [y, m, d] = s.split("-").map(Number);
-  return new Date(y, m - 1, d);
+/** Calendar-only ISO conversion. UTC avoids process-timezone dependent arithmetic. */
+export function toISODate(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
-/**
- * Iterate every calendar date (inclusive) between start and end.
- * Yields ISO date strings.
- */
-export function* dateRange(
-  startStr: string,
-  endStr: string
-): Generator<string> {
-  const start = parseISODate(startStr);
-  const end = parseISODate(endStr);
-  const cur = new Date(start);
-  while (cur <= end) {
-    yield toISODate(cur);
-    cur.setDate(cur.getDate() + 1);
+export function dateToWeekday(date: Date): number {
+  return (date.getUTCDay() + 6) % 7;
+}
+
+export function daysBetween(start: string, end: string): number {
+  return Math.round((parseISODate(end).getTime() - parseISODate(start).getTime()) / 86_400_000);
+}
+
+export function* dateRange(start: string, end: string): Generator<string> {
+  const first = parseISODate(start);
+  const last = parseISODate(end);
+  if (last < first) throw new Error("La data finale precede quella iniziale.");
+  for (let cursor = first.getTime(); cursor <= last.getTime(); cursor += 86_400_000) {
+    yield toISODate(new Date(cursor));
   }
 }
 
-/** Today's ISO date string, in local time. */
-export function today(): string {
-  return toISODate(new Date());
+/** Today's civil date in Italy, independent of the server/container timezone. */
+export function today(reference = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(reference);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+export function addCalendarDays(date: string, days: number): string {
+  const parsed = parseISODate(date);
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return toISODate(parsed);
 }

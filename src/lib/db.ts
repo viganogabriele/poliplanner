@@ -1,48 +1,47 @@
-// ============================================================
-// Database connection singleton
-// ============================================================
-// This module opens ONE better-sqlite3 connection for the entire
-// Next.js server process and reuses it. Opening a new connection
-// per request would be slow and wasteful.
-//
-// Why better-sqlite3 (synchronous) and not an async driver?
-// Because Next.js Server Components and Server Actions run in a
-// Node.js context where synchronous I/O is fine — there is no
-// event loop to block like in a raw HTTP server. Synchronous code
-// is also simpler to read and debug.
-
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import { ensureSchema } from "./schema";
 
-// Resolve DB path relative to the project root (process.cwd()).
-// During `next dev` and `next start` this is the repo root.
-// db/lesson_tracker.db is .gitignore'd but the db/ directory is tracked.
-const DB_PATH = path.join(process.cwd(), "db", "lesson_tracker.db");
-
-// Module-level singleton: created once, reused across all requests.
-// In Next.js dev mode, hot-reload can re-evaluate modules, so we
-// cache on the global object to survive HMR restarts.
-declare global {
-  var __db: BetterSqlite3.Database | undefined;
+export function getDatabasePath(): string {
+  const configured = process.env.POLIPLANNER_DB_PATH?.trim();
+  return path.resolve(configured || path.join(/* turbopackIgnore: true */ process.cwd(), "db", "lesson_tracker.db"));
 }
 
-function openDb(): BetterSqlite3.Database {
-  const db = new BetterSqlite3(DB_PATH);
-  // WAL mode allows readers and one writer to coexist, faster on SSDs.
-  db.pragma("journal_mode = WAL");
-  // NORMAL synchronous: safe for local use, faster than FULL.
-  db.pragma("synchronous = NORMAL");
-  // Ensure tables exist on every startup (idempotent).
-  ensureSchema(db);
-  return db;
+declare global {
+  var __db: BetterSqlite3.Database | undefined;
+  var __dbPath: string | undefined;
+}
+
+function openDb(dbPath: string): BetterSqlite3.Database {
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  const db = new BetterSqlite3(dbPath);
+  try {
+    db.pragma("foreign_keys = ON");
+    db.pragma("busy_timeout = 5000");
+    db.pragma("journal_mode = WAL");
+    db.pragma("synchronous = NORMAL");
+    ensureSchema(db);
+    return db;
+  } catch (error) {
+    db.close();
+    throw error;
+  }
 }
 
 export function getDb(): BetterSqlite3.Database {
-  if (!global.__db) {
-    global.__db = openDb();
-  } else {
-    ensureSchema(global.__db);
+  const dbPath = getDatabasePath();
+  if (!global.__db || global.__dbPath !== dbPath) {
+    global.__db?.close();
+    global.__db = openDb(dbPath);
+    global.__dbPath = dbPath;
   }
   return global.__db;
+}
+
+/** Test helper: close the singleton so another isolated path can be opened. */
+export function closeDb(): void {
+  global.__db?.close();
+  global.__db = undefined;
+  global.__dbPath = undefined;
 }

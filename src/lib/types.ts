@@ -23,6 +23,7 @@ export interface ScheduleRow {
   id: number;
   weekday: number;
   subject: string;
+  course_code: string | null;
   start_date: string;
   end_date: string;
   mode: LessonMode;
@@ -32,7 +33,7 @@ export interface ScheduleRow {
  * What the ScheduleEditor sends to the server action.
  * id is omitted on new rows (the DB auto-assigns it).
  */
-export type ScheduleRowInput = Omit<ScheduleRow, "id">;
+export type ScheduleRowInput = Omit<ScheduleRow, "id"> & { id?: number };
 
 // ----- Lesson occurrences -----
 
@@ -42,10 +43,13 @@ export type ScheduleRowInput = Omit<ScheduleRow, "id">;
  */
 export interface LessonOccurrence {
   id: number;
+  schedule_id: number;
   subject: string;
+  course_code: string | null;
   weekday: number;
   lesson_date: string;
   mode: LessonMode;
+  mode_override: LessonMode | null;
   done: boolean;
 }
 

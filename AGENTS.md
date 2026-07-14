@@ -29,9 +29,9 @@ public/                  manifest e service worker PWA
 
 - Le pagine sono Server Components e leggono direttamente da `src/lib/*`: non esiste una REST API per le letture.
 - I componenti interattivi usano `"use client"` e invocano solo funzioni esportate da `src/app/actions.ts` per scrivere. Ogni mutazione deve rieseguire `revalidatePath("/", "layout")`.
-- `schedule` contiene regole settimanali; `lesson_occurrence` è la vista materializzata delle date. `saveSchedule()` rigenera le occorrenze preservando `done` per le date invariate.
-- SQLite è locale, in WAL mode. Schema e migrazioni additive vivono in `schema.ts`; non introdurre ORM o migrazioni esterne senza una necessità concreta.
-- Il piano ha scenari (`study_plan_cycles`) e righe (`study_plan_entries`). Solo uno scenario `polimi_compiled` influenza le reintegrazioni dell'anno successivo. Il validatore deve restare puro in `lib/polimi/validation.ts` e i suoi test vivono in `src/scripts/test-polimi-plan.ts`.
+- `schedule` conserva un ID stabile; `lesson_occurrence` è la vista materializzata legata da `schedule_id`, con `mode_override`. `saveSchedule()` aggiorna regole e occorrenze nella stessa transazione, preservando `done` per date/regole invariate.
+- SQLite è locale, in WAL mode, con foreign key, timeout e schema v2 versionato da `PRAGMA user_version`. `POLIPLANNER_DB_PATH` è l'override facoltativo; un upgrade legacy fa prima un backup coerente. Non introdurre ORM o migrazioni esterne senza una necessità concreta.
+- Il piano ha scenari (`study_plan_cycles`) e righe (`study_plan_entries`). Stato e archiviazione sono distinti; `settings.active_plan_cycle_id` determina il solo scenario usato da dashboard/esami. Gli scenari compilati sono immutabili. Il validatore deve restare puro in `lib/polimi/validation.ts` e i suoi test vivono in `src/scripts/test-polimi-plan.ts`.
 
 ## Confini importanti
 

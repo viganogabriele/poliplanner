@@ -31,6 +31,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export const FREE_CHOICE_CFU_RANGE: [number, number] = [12, 18];
+export const EXTERNAL_FREE_CHOICE_CFU_MAX = 15;
 export const FINAL_EXAM_CFU = 5;
 export const YEAR_CFU_RANGE: [number, number] = [30, 80];
 export const SUPERNUMERARY_CFU_MAX = 32;
@@ -83,7 +84,6 @@ export const COURSE_AREA_BY_CODE: Record<string, { kind: "base"; area: BaseArea 
   "052425": { kind: "base", area: "math_info_stats" },
   "085903": { kind: "base", area: "math_info_stats" },
   "099319": { kind: "base", area: "math_info_stats" },
-  "058082": { kind: "base", area: "physics_chemistry" },
   "085900": { kind: "base", area: "physics_chemistry" },
 
   "085746": { kind: "characterizing", area: "electronics" },
@@ -110,7 +110,7 @@ export const COURSE_AREA_BY_CODE: Record<string, { kind: "base"; area: BaseArea 
 export const NOTA_MAGISTRALE = {
   MUST_HAVE: ["088804"],
   SHOULD_HAVE_ONE_OF: [
-    "058082", "058083", "058081", "058084", "093506",
+    "085900", "058083", "058081", "058084", "093506",
     "088805", "085900",
   ],
 };
@@ -128,7 +128,7 @@ export const GRADE_MAX = 30;
 export const GRADE_LAUDE = "30L";
 
 export type PlanValidationMode = "annual_submission" | "second_semester_revision";
-export type PlanStatus = "draft" | "ready" | "polimi_compiled" | "archived";
+export type PlanStatus = "draft" | "ready" | "polimi_compiled";
 export type ApprovalStatus = "auto_approved_after_deadline" | "needs_commission_review";
 export type EntryPosition = "effective" | "supernumerary";
 export type EntryOrigin = "recommended" | "carried_over" | "new_frequency" | "recovery_reinserted" | "free_choice";

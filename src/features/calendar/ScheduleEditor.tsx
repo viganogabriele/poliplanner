@@ -15,14 +15,14 @@
 import { useState, useTransition } from "react";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { saveScheduleAction } from "@/app/actions";
-import { WEEKDAY_LABELS, WORKWEEK } from "@/lib/dates";
+import { addCalendarDays, today, WEEKDAY_LABELS, WORKWEEK } from "@/lib/dates";
 import { LESSON_MODE_LABELS, type LessonMode, type ScheduleRow } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { fieldLabelClass, inputClass, selectClass } from "@/components/ui/Field";
 
 // A row in the editor may or may not have an id yet (new rows don't)
-type EditorRow = Omit<ScheduleRow, "id"> & { _key: number };
+type EditorRow = Omit<ScheduleRow, "id"> & { id?: number; _key: number };
 
 let keyCounter = 0;
 const newKey = () => ++keyCounter;
@@ -32,12 +32,14 @@ function rowFromSchedule(r: ScheduleRow): EditorRow {
 }
 
 function emptyRow(): EditorRow {
+  const start = today();
   return {
     _key: newKey(),
     weekday: 0,
     subject: "",
-    start_date: "2026-06-01",
-    end_date: "2026-09-30",
+    course_code: null,
+    start_date: start,
+    end_date: addCalendarDays(start, 120),
     mode: "asincrona",
   };
 }
@@ -80,8 +82,10 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess }: ScheduleE
     setSuccess(false);
     startTransition(async () => {
       const payload = rows.map((row) => ({
+        id: row.id,
         weekday: row.weekday,
         subject: row.subject,
+        course_code: row.course_code,
         start_date: row.start_date,
         end_date: row.end_date,
         mode: row.mode,
@@ -178,6 +182,15 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess }: ScheduleE
                     placeholder="Nome materia"
                     className={inputClass("min-w-0")}
                   />
+                  <input
+                    aria-label={`Codice corso facoltativo riga ${index + 1}`}
+                    type="text"
+                    value={row.course_code ?? ""}
+                    onChange={(e) => updateRow(row._key, "course_code", e.target.value)}
+                    placeholder="Codice corso (facoltativo)"
+                    maxLength={32}
+                    className={inputClass("mt-2 min-w-0 text-xs")}
+                  />
                 </td>
 
                 <td className="px-3 py-3">
@@ -271,6 +284,18 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess }: ScheduleE
                     </option>
                   ))}
                 </select>
+              </label>
+
+              <label className="space-y-2">
+                <span className={fieldLabelClass}>Codice corso (facoltativo)</span>
+                <input
+                  type="text"
+                  value={row.course_code ?? ""}
+                  onChange={(e) => updateRow(row._key, "course_code", e.target.value)}
+                  placeholder="es. 085900"
+                  maxLength={32}
+                  className={inputClass()}
+                />
               </label>
 
               <label className="space-y-2">

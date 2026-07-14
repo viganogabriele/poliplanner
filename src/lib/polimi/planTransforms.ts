@@ -20,6 +20,10 @@ export function toDraftEntry(entry: PlanEntry): Omit<PlanEntry, "id" | "cycleId"
   return {
     courseCode: entry.courseCode,
     courseYear: entry.courseYear,
+    semester: entry.semester,
+    entryKind: entry.entryKind,
+    externalName: entry.externalName,
+    externalCfu: entry.externalCfu,
     position: entry.position,
     origin: entry.origin,
     isNewFrequency: entry.isNewFrequency,

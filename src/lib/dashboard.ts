@@ -6,9 +6,10 @@
 // and passes the result as props to child components.
 
 import { getDb } from "./db";
-import { WEEKDAY_LABELS, today, toISODate } from "./dates";
+import { dateToWeekday, parseISODate, WEEKDAY_LABELS, today } from "./dates";
 import { getExams } from "./esami";
 import { weightedAverage } from "./polimi/gradeCalc";
+import { getCurrentPlanScenario } from "./piano";
 import type {
   DashboardPayload,
   SubjectProgress,
@@ -17,6 +18,7 @@ import type {
 
 interface OccurrenceRow {
   id: number;
+  schedule_id: number;
   subject: string;
   weekday: number;
   lesson_date: string;
@@ -35,15 +37,16 @@ interface SubjectRow {
 export function getDashboard(): DashboardPayload {
   const db = getDb();
   const todayStr = today();
-  const now = new Date();
 
   // --- Todo items (lessons on or before today that are not done) ---
   const todoRows = db
     .prepare(
-      `SELECT id, subject, weekday, lesson_date, mode, done
-       FROM lesson_occurrence
-       WHERE lesson_date <= ? AND done = 0
-       ORDER BY lesson_date ASC, subject ASC`
+      `SELECT o.id, o.schedule_id, s.subject, s.weekday, o.lesson_date,
+              COALESCE(o.mode_override, s.mode) AS mode, o.done
+       FROM lesson_occurrence o
+       JOIN schedule s ON s.id = o.schedule_id
+       WHERE o.lesson_date <= ? AND o.done = 0
+       ORDER BY o.lesson_date ASC, s.subject ASC, o.id ASC`
     )
     .all(todayStr) as OccurrenceRow[];
 
@@ -75,8 +78,7 @@ export function getDashboard(): DashboardPayload {
   // --- Overall progress: done / (done + backlog) ---
   const pending_count = todo_items.length;
   const progress_base = done_count + pending_count;
-  const progress_percent =
-    progress_base === 0 ? 100 : Math.round((done_count / progress_base) * 100);
+  const progress_percent = progress_base === 0 ? 0 : Math.round((done_count / progress_base) * 100);
 
   // --- Total count used in the stat tile ---
   const total_count = (
@@ -89,13 +91,14 @@ export function getDashboard(): DashboardPayload {
   const subjectRows = db
     .prepare(
       `SELECT
-         subject,
+         s.subject,
          COUNT(*) AS total_all,
          COALESCE(SUM(CASE WHEN done = 1 THEN 1 ELSE 0 END), 0) AS done_count,
          COALESCE(SUM(CASE WHEN lesson_date <= ? AND done = 0 THEN 1 ELSE 0 END), 0) AS backlog_count
-       FROM lesson_occurrence
-       GROUP BY subject
-       ORDER BY subject`
+       FROM lesson_occurrence o
+       JOIN schedule s ON s.id = o.schedule_id
+       GROUP BY s.subject
+       ORDER BY s.subject`
     )
     .all(todayStr) as SubjectRow[];
 
@@ -108,45 +111,23 @@ export function getDashboard(): DashboardPayload {
       done: row.done_count,
       pending: row.backlog_count,
       progress_percent:
-        base === 0 ? 100 : Math.round((row.done_count / base) * 100),
+        base === 0 ? 0 : Math.round((row.done_count / base) * 100),
     };
   });
 
   // --- Exam stats ---
   const examsMap = getExams();
-  const db2 = getDb();
-  // Get all effective entries from the active/ready/draft scenario
-  const planEntryRows = db2.prepare(`
-    SELECT spe.course_code
-    FROM study_plan_entries spe
-    JOIN study_plan_cycles spc ON spe.cycle_id = spc.id
-    WHERE spe.position = 'effective' AND spc.status != 'archived'
-    ORDER BY spc.id DESC
-  `).all() as { course_code: string }[];
-  // Deduplicate by course_code (latest cycle wins)
-  const seenCodes = new Set<string>();
-  const effectiveCodes: string[] = [];
-  for (const row of planEntryRows) {
-    if (!seenCodes.has(row.course_code)) {
-      seenCodes.add(row.course_code);
-      effectiveCodes.push(row.course_code);
-    }
-  }
+  const activeEntries = getCurrentPlanScenario().entries.filter((entry) => entry.position === "effective");
+  const effectiveCodes = activeEntries.map((entry) => entry.courseCode);
   const exam_total_count = effectiveCodes.length;
   const exam_passed_count = effectiveCodes.filter(code =>
     examsMap[code]?.status === 'passed_registered'
   ).length;
-  // Weighted average: read from weightedAverage using exams and a minimal entries array
-  // Build minimal PlanEntry-like objects for weightedAverage
-  const minimalEntries = effectiveCodes.map(code => ({
-    courseCode: code, position: 'effective' as const, feeCounted: true, origin: 'recommended' as const,
-    courseYear: 1 as const, isNewFrequency: true, id: null, cycleId: null, createdAt: ''
-  }));
-  const { average: exam_average } = weightedAverage(examsMap, minimalEntries);
+  const { average: exam_average } = weightedAverage(examsMap, activeEntries);
 
   return {
     today: todayStr,
-    today_weekday: WEEKDAY_LABELS[now.getDay() === 0 ? 6 : now.getDay() - 1],
+    today_weekday: WEEKDAY_LABELS[dateToWeekday(parseISODate(todayStr))],
     today_count,
     total_count,
     done_count,
@@ -163,10 +144,11 @@ export function getDashboard(): DashboardPayload {
 /** Mark a single lesson occurrence as done or not-done. */
 export function toggleLesson(id: number, done: boolean): void {
   const db = getDb();
-  db.prepare("UPDATE lesson_occurrence SET done = ? WHERE id = ?").run(
+  const result = db.prepare("UPDATE lesson_occurrence SET done = ? WHERE id = ?").run(
     done ? 1 : 0,
     id
   );
+  if (result.changes !== 1) throw new Error("Lezione non trovata.");
 }
 
 /** Reset all lesson occurrences to not-done. */
@@ -176,15 +158,19 @@ export function resetCompletions(): void {
 }
 
 /** Today's ISO date string and formatted time, for the "Oggi" panel. */
-export function getNowTime(): string {
-  return toISODate(new Date());
-}
-
 /** Update the mode of a single lesson occurrence. */
 export function setLessonMode(id: number, mode: import("./types").LessonMode): void {
   if (mode !== "presenza" && mode !== "asincrona") {
     throw new Error("Modalità lezione non valida.");
   }
   const db = getDb();
-  db.prepare("UPDATE lesson_occurrence SET mode = ? WHERE id = ?").run(mode, id);
+  const result = db.prepare(`
+    UPDATE lesson_occurrence
+    SET mode_override = CASE
+      WHEN ? = (SELECT mode FROM schedule WHERE id = lesson_occurrence.schedule_id) THEN NULL
+      ELSE ?
+    END
+    WHERE id = ?
+  `).run(mode, mode, id);
+  if (result.changes !== 1) throw new Error("Lezione non trovata.");
 }

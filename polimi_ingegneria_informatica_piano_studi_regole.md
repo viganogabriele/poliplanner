@@ -166,7 +166,7 @@ if modification_window == "second_semester":
 
 ### 3.1 CFU complessivi
 
-Per laurearsi è necessario conseguire almeno 180 CFU effettivi.
+Per conseguire il titolo sono richiesti 180 CFU; il validatore del piano preapprovato richiede quindi esattamente 180 CFU effettivi e tiene gli eventuali soprannumerari separati.
 
 Composizione minima/massima delle attività formative indicata dal regolamento:
 
@@ -201,7 +201,7 @@ Composizione minima/massima delle attività formative indicata dal regolamento:
 Implementazione:
 
 ```pseudo
-require total_effective_cfu >= 180
+require total_effective_cfu == 180
 require base_cfu >= 50
 require characterizing_cfu >= 60
 require affine_integrative_cfu >= 18

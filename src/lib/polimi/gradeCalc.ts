@@ -4,7 +4,7 @@ import type { ExamsMap } from "@/lib/esami";
 import type { PlanEntry } from "@/lib/piano";
 
 export function parseGrade(grade: string): number | null {
-  if (grade === GRADE_LAUDE || grade === "30L") return 31;
+  if (grade === GRADE_LAUDE || grade === "30L") return 30;
   const n = Number(grade);
   return isNaN(n) ? null : n;
 }
@@ -47,5 +47,5 @@ export function weightedAverage(exams: ExamsMap, entries: PlanEntry[]): { averag
 
 export function estimateFinalGrade(average: number | null): number | null {
   if (!average) return null;
-  return Math.round((average * 110) / 30);
+  return Math.min(110, Math.round((average * 110) / 30));
 }

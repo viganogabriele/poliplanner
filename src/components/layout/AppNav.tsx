@@ -89,9 +89,9 @@ export default function AppNav() {
           <div className="rounded-card border border-border bg-surface/60 p-3 text-xs text-muted">
             <div className="mb-2 flex items-center gap-2 text-secondary">
               <span className="size-2 rounded-full bg-success" />
-              Sistema locale
+              Istanza privata
             </div>
-            Dati e calendario restano sul dispositivo.
+            I dati restano nel database di questa istanza.
           </div>
         </div>
       </nav>

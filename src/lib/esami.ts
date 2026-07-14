@@ -1,5 +1,6 @@
 import { getDb } from "./db";
 import { GRADE_LAUDE, GRADE_MAX, GRADE_MIN, type ExamStatus } from "./polimi/constraints";
+import { isISODate, today } from "./dates";
 
 export type ExamEntry = {
   course_code: string;
@@ -29,10 +30,13 @@ export function getExams(): ExamsMap {
 }
 
 export function setExamStatus(code: string, status: ExamStatus, dates?: { passedAt?: string | null; registeredAt?: string | null }): void {
+  const normalizedCode = validateCode(code);
+  validateStatus(status);
   const db = getDb();
   const now = nowIso();
-  const passedAt = dates?.passedAt ?? (status.startsWith("passed_") ? now.slice(0, 10) : null);
-  const registeredAt = dates?.registeredAt ?? (status === "passed_registered" ? now.slice(0, 10) : null);
+  const passedAt = validateOptionalDate(dates?.passedAt, "superamento") ?? (status.startsWith("passed_") ? today() : null);
+  const registeredAt = validateOptionalDate(dates?.registeredAt, "verbalizzazione") ?? (status === "passed_registered" ? today() : null);
+  if (registeredAt && passedAt && registeredAt < passedAt) throw new Error("La verbalizzazione non può precedere il superamento.");
   db.prepare(`
     INSERT INTO exams (course_code, status, grade, passed_at, registered_at, updated_at)
     VALUES (?, ?, NULL, ?, ?, ?)
@@ -42,10 +46,10 @@ export function setExamStatus(code: string, status: ExamStatus, dates?: { passed
       passed_at = excluded.passed_at,
       registered_at = excluded.registered_at,
       updated_at = excluded.updated_at
-  `).run(code, status, passedAt, registeredAt, now);
+  `).run(normalizedCode, status, passedAt, registeredAt, now);
 
   if (status === "passed_registered") {
-    scaleRecoveredEntriesForRegisteredExam(code);
+    scaleRecoveredEntriesForRegisteredExam(normalizedCode);
   }
 }
 
@@ -54,6 +58,7 @@ export function setExamGrade(code: string, grade: string | null): void {
     throw new Error("Voto non valido. Usa un valore tra 18 e 30 oppure 30L.");
   }
   const db = getDb();
+  const normalizedCode = validateCode(code);
   db.prepare(`
     INSERT INTO exams (course_code, status, grade, passed_at, registered_at, updated_at)
     VALUES (?, 'passed_unregistered', ?, CURRENT_DATE, NULL, ?)
@@ -62,12 +67,15 @@ export function setExamGrade(code: string, grade: string | null): void {
       grade = excluded.grade,
       passed_at = COALESCE(passed_at, CURRENT_DATE),
       updated_at = excluded.updated_at
-  `).run(code, grade, nowIso());
+  `).run(normalizedCode, grade, nowIso());
 }
 
 export function markExamRegistered(code: string, registeredAt: string | null = null): void {
   const db = getDb();
-  const date = registeredAt ?? new Date().toISOString().slice(0, 10);
+  const normalizedCode = validateCode(code);
+  const date = validateOptionalDate(registeredAt, "verbalizzazione") ?? today();
+  const current = db.prepare("SELECT passed_at FROM exams WHERE course_code = ?").get(normalizedCode) as { passed_at: string | null } | undefined;
+  if (current?.passed_at && date < current.passed_at) throw new Error("La verbalizzazione non può precedere il superamento.");
   db.prepare(`
     INSERT INTO exams (course_code, status, grade, passed_at, registered_at, updated_at)
     VALUES (?, 'passed_registered', NULL, ?, ?, ?)
@@ -76,8 +84,8 @@ export function markExamRegistered(code: string, registeredAt: string | null = n
       passed_at = COALESCE(passed_at, excluded.passed_at),
       registered_at = excluded.registered_at,
       updated_at = excluded.updated_at
-  `).run(code, date, date, nowIso());
-  scaleRecoveredEntriesForRegisteredExam(code);
+  `).run(normalizedCode, date, date, nowIso());
+  scaleRecoveredEntriesForRegisteredExam(normalizedCode);
 }
 
 export function syncExamsWithPlan(courseCodes: string[]): void {
@@ -97,7 +105,30 @@ export function scaleRecoveredEntriesForRegisteredExam(courseCode: string): void
     SET is_new_frequency = 0, fee_counted = 0
     WHERE course_code = ?
       AND origin IN ('carried_over', 'recovery_reinserted')
+      AND cycle_id IN (
+        SELECT c.id FROM study_plan_cycles c
+        JOIN settings s ON s.key = 'active_plan_cycle_id' AND CAST(s.value AS INTEGER) = c.id
+        WHERE c.archived_at IS NULL AND c.status IN ('draft', 'ready')
+      )
   `).run(courseCode);
+}
+
+function validateCode(code: string): string {
+  const normalized = code.trim().toUpperCase();
+  if (!normalized || normalized.length > 32) throw new Error("Codice corso non valido.");
+  return normalized;
+}
+
+function validateStatus(status: string): asserts status is ExamStatus {
+  if (!["planned", "not_passed", "passed_unregistered", "passed_registered", "not_required", "no_class"].includes(status)) {
+    throw new Error("Stato esame non valido.");
+  }
+}
+
+function validateOptionalDate(value: string | null | undefined, label: string): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (!isISODate(value)) throw new Error(`Data di ${label} non valida: usa YYYY-MM-DD.`);
+  return value;
 }
 
 function normalizeExamRow(row: ExamEntry): ExamRecord {

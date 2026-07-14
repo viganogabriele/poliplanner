@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import StatTile from "@/components/ui/StatTile";
 import { cn } from "@/lib/ui";
+import { today } from "@/lib/dates";
 import type { ExamsMap, ExamRecord } from "@/lib/esami";
 import type { PlanEntry, PlanScenario } from "@/lib/piano";
 import type { ExamStatus } from "@/lib/polimi/constraints";
@@ -40,11 +41,11 @@ const STATUS_VARIANT: Record<ExamStatus, "neutral" | "success" | "warning" | "da
   not_required: "warning",
 };
 
-type Props = { initialExams: ExamsMap; scenario: PlanScenario };
+type Props = { initialExams: ExamsMap; scenario: PlanScenario; calendarSubjectByCourse: Record<string, string> };
 type MutationResult = { ok: boolean; error?: string };
 type Toast = { message: string; variant: "success" | "danger" };
 
-export default function EsamiClient({ initialExams, scenario }: Props) {
+export default function EsamiClient({ initialExams, scenario, calendarSubjectByCourse }: Props) {
   const router = useRouter();
   const [optimisticExams, updateOptimisticExams] = useOptimistic(
     initialExams,
@@ -145,8 +146,8 @@ export default function EsamiClient({ initialExams, scenario }: Props) {
 
   const updateStatus = (code: string, status: ExamStatus) => {
     const current = byCourse(code);
-    const passedAt = status.startsWith("passed_") ? current.passedAt ?? new Date().toISOString().slice(0, 10) : null;
-    const registeredAt = status === "passed_registered" ? current.registeredAt ?? new Date().toISOString().slice(0, 10) : null;
+    const passedAt = status.startsWith("passed_") ? current.passedAt ?? today() : null;
+    const registeredAt = status === "passed_registered" ? current.registeredAt ?? today() : null;
     const newExam: ExamRecord = {
       ...(current),
       status,
@@ -177,7 +178,7 @@ export default function EsamiClient({ initialExams, scenario }: Props) {
       ...current,
       status: current.status === "passed_registered" ? "passed_registered" : "passed_unregistered",
       grade: gradeStr || null,
-      passedAt: current.passedAt ?? new Date().toISOString().slice(0, 10),
+      passedAt: current.passedAt ?? today(),
       updatedAt: new Date().toISOString(),
     };
     runExamMutation(code, newExam, () => setExamGradeAction(code, gradeStr || null));
@@ -194,7 +195,7 @@ export default function EsamiClient({ initialExams, scenario }: Props) {
   };
 
   const markRegistered = (code: string) => {
-    const registeredAt = new Date().toISOString().slice(0, 10);
+    const registeredAt = today();
     const current = byCourse(code);
     const newExam: ExamRecord = {
       ...current,
@@ -333,6 +334,7 @@ export default function EsamiClient({ initialExams, scenario }: Props) {
                 const isPassed = exam.status.startsWith("passed_");
                 const isDone = exam.status === "passed_registered";
                 const rowKey = entry.id != null ? String(entry.id) : entry.courseCode;
+                const calendarSubject = calendarSubjectByCourse[entry.courseCode];
 
                 return (
                   <div
@@ -345,12 +347,13 @@ export default function EsamiClient({ initialExams, scenario }: Props) {
                     {/* Compact row */}
                     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
                       <div className="min-w-0 flex-1">
-                        <Link
-                          href={`/materie/${encodeURIComponent(course.name)}`}
-                          className="truncate text-sm font-medium text-primary hover:text-accent transition"
-                        >
-                          {course.name}
-                        </Link>
+                        {calendarSubject ? (
+                          <Link href={`/materie/${encodeURIComponent(calendarSubject)}`} className="truncate text-sm font-medium text-primary hover:text-accent transition">
+                            {course.name}
+                          </Link>
+                        ) : (
+                          <p className="truncate text-sm font-medium text-primary">{course.name}</p>
+                        )}
                         <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                           <p className="text-xs text-muted">{course.cfu} CFU</p>
                           <Badge variant={entry.position === "supernumerary" ? "warning" : "neutral"} className="py-0 text-[10px]">

@@ -1,10 +1,17 @@
 {
+  "id": "/",
   "name": "Poliplanner",
   "short_name": "Poliplanner",
-  "start_url": "/",
+  "description": "Planner self-hostable per lezioni, esami e piano di studi",
+  "lang": "it",
+  "start_url": "/dashboard",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#020617",
-  "description": "Planner universitario locale per lezioni, esami e piano di studi",
-  "icons": []
+  "background_color": "#030303",
+  "theme_color": "#030303",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
 }

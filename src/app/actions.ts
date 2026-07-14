@@ -1,237 +1,268 @@
 "use server";
-// Server Actions — the "write" side of the app
-//
-// These are async functions that run on the SERVER but can be called
-// directly from Client Components. When a client component imports and
-// calls saveScheduleAction(), Next.js automatically handles the
-// network request — you don't write fetch() calls.
-//
-// After each mutation we call revalidatePath("/", "layout") which tells
-// Next.js to re-render all routes under the root layout with fresh DB data.
-//
-// "use server" at the top of this file marks every exported function
-// as a server action. You can also put "use server" inside a single
-// function body if you want mixed files.
 
 import { revalidatePath } from "next/cache";
 import { saveSchedule, validateScheduleRows } from "@/lib/schedule";
-import { toggleLesson, resetCompletions, setLessonMode } from "@/lib/dashboard";
+import { resetCompletions, setLessonMode, toggleLesson } from "@/lib/dashboard";
 import { resetDatabase } from "@/lib/schema";
 import { seedDatabase } from "@/lib/seed";
 import { getDb } from "@/lib/db";
 import {
+  archivePlanCycle,
+  createAnnualDraft,
+  createSecondSemesterRevision,
   duplicatePlanForNextAcademicYear,
   getPlanScenario,
   getPreviousCompiledEntries,
+  restorePlanCycle,
   savePlanDraft,
-  setTrack,
+  setActivePlanCycle,
   updateCycleStatus,
+  type PlanDraftPayload,
 } from "@/lib/piano";
-import { markExamRegistered, setExamStatus, setExamGrade, syncExamsWithPlan } from "@/lib/esami";
-import { getExams } from "@/lib/esami";
+import { getExams, markExamRegistered, setExamGrade, setExamStatus, syncExamsWithPlan } from "@/lib/esami";
 import { getApprovalStatus, validatePlanScenario } from "@/lib/polimi/validation";
-import type { LessonMode, ScheduleRowInput } from "@/lib/types";
-import type { Piano, PlanDraftPayload } from "@/lib/piano";
-import type { ExamStatus, PlanValidationMode, Track } from "@/lib/polimi/constraints";
+import type { ExamStatus, Track } from "@/lib/polimi/constraints";
+import type { LessonMode } from "@/lib/types";
 
-/** Save a new schedule (full replace) and regenerate lesson occurrences. */
-export async function saveScheduleAction(rows: unknown[]): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const validated = validateScheduleRows(rows);
-    saveSchedule(validated as ScheduleRowInput[]);
-    revalidatePath("/", "layout");
-    return { ok: true };
-  } catch (err) {
-    console.error("saveScheduleAction error:", err);
-    return { ok: false, error: String(err) };
-  }
-}
+export type ActionResult<T = undefined> = T extends undefined
+  ? { ok: true } | { ok: false; error: string }
+  : { ok: true; data: T } | { ok: false; error: string };
 
-/** Toggle a single lesson as done/not-done. */
-export async function toggleLessonAction(id: number, done: boolean): Promise<void> {
-  toggleLesson(id, done);
+function refresh(): void {
   revalidatePath("/", "layout");
 }
 
-/** Reset all lesson completions to not-done. */
-export async function resetCompletionsAction(): Promise<void> {
-  resetCompletions();
-  revalidatePath("/", "layout");
+function validId(value: unknown): number {
+  const id = Number(value);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error("Identificatore non valido.");
+  return id;
 }
 
-/** Drop and recreate all tables, leaving the database empty. */
-export async function resetDatabaseAction(): Promise<{ ok: boolean; error?: string }> {
+function failure(error: unknown, action: string): { ok: false; error: string } {
+  console.error(`[${action}]`, error);
+  return { ok: false, error: error instanceof Error ? error.message : "Errore interno inatteso." };
+}
+
+function validationFor(cycleId: number) {
+  const scenario = getPlanScenario(cycleId);
+  if (!scenario) throw new Error("Piano non trovato.");
+  return {
+    scenario,
+    result: validatePlanScenario(scenario, {
+      exams: getExams(),
+      previousCompiledEntries: getPreviousCompiledEntries(scenario.cycle.id),
+      baseRevisionScenario: scenario.cycle.revisionOfCycleId ? getPlanScenario(scenario.cycle.revisionOfCycleId) : null,
+    }),
+  };
+}
+
+export async function saveScheduleAction(rows: unknown): Promise<ActionResult> {
+  try {
+    saveSchedule(validateScheduleRows(rows));
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return failure(error, "saveSchedule");
+  }
+}
+
+export async function toggleLessonAction(rawId: unknown, done: unknown): Promise<ActionResult> {
+  try {
+    if (typeof done !== "boolean") throw new Error("Stato completamento non valido.");
+    toggleLesson(validId(rawId), done);
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return failure(error, "toggleLesson");
+  }
+}
+
+export async function setLessonModeAction(rawId: unknown, mode: unknown): Promise<ActionResult> {
+  try {
+    if (mode !== "presenza" && mode !== "asincrona") throw new Error("Modalità lezione non valida.");
+    setLessonMode(validId(rawId), mode as LessonMode);
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return failure(error, "setLessonMode");
+  }
+}
+
+export async function resetCompletionsAction(): Promise<ActionResult> {
+  try {
+    resetCompletions();
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return failure(error, "resetCompletions");
+  }
+}
+
+export async function resetDatabaseAction(): Promise<ActionResult> {
   try {
     resetDatabase(getDb());
-    revalidatePath("/", "layout");
+    refresh();
     return { ok: true };
-  } catch (err) {
-    return { ok: false, error: String(err) };
+  } catch (error) {
+    return failure(error, "resetDatabase");
   }
 }
 
-/** Reset the database and load demo seed data. */
-export async function seedDatabaseAction(): Promise<{ ok: boolean; error?: string }> {
+export async function seedDatabaseAction(): Promise<ActionResult> {
   try {
-    resetDatabase(getDb());
-    seedDatabase(getDb());
-    revalidatePath("/", "layout");
+    const db = getDb();
+    resetDatabase(db);
+    seedDatabase(db);
+    refresh();
     return { ok: true };
-  } catch (err) {
-    return { ok: false, error: String(err) };
+  } catch (error) {
+    return failure(error, "seedDatabase");
   }
 }
 
-/** Save the full study plan and selected track. */
-export async function savePianoAction(piano: Piano, track: Track): Promise<{ ok: boolean; error?: string }> {
-  try {
-    setTrack(track);
-    const allCodes = ([1, 2, 3] as const).flatMap((y) => [...piano[y].courses, ...piano[y].soprannumero]);
-    syncExamsWithPlan(allCodes);
-    revalidatePath("/", "layout");
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: String(err) };
-  }
-}
-
-/** Save the always-open planner draft. Drafts are saved even when validation has errors. */
-export async function savePlanDraftAction(payload: PlanDraftPayload): Promise<{ ok: boolean; scenario?: ReturnType<typeof savePlanDraft>; error?: string }> {
+export async function savePlanDraftAction(payload: PlanDraftPayload): Promise<ActionResult<ReturnType<typeof savePlanDraft>>> {
   try {
     const scenario = savePlanDraft(payload);
     syncExamsWithPlan(scenario.entries.map((entry) => entry.courseCode));
-    revalidatePath("/", "layout");
-    return { ok: true, scenario };
-  } catch (err) {
-    return { ok: false, error: String(err) };
+    refresh();
+    return { ok: true, data: scenario };
+  } catch (error) {
+    return failure(error, "savePlanDraft");
   }
 }
 
-export async function validatePlanScenarioAction(cycleId: number): Promise<{ ok: boolean; error?: string; issues?: ReturnType<typeof validatePlanScenario>["issues"]; summary?: ReturnType<typeof validatePlanScenario>["summary"] }> {
+export async function validatePlanScenarioAction(rawCycleId: unknown): Promise<ActionResult<ReturnType<typeof validatePlanScenario>>> {
   try {
-    const scenario = getPlanScenario(cycleId);
-    if (!scenario) return { ok: false, error: "Piano non trovato." };
-    const result = validatePlanScenario(scenario, {
-      exams: getExams(),
-      previousCompiledEntries: getPreviousCompiledEntries(scenario.cycle.id),
-      baseRevisionScenario: scenario.cycle.revisionOfCycleId ? getPlanScenario(scenario.cycle.revisionOfCycleId) : null,
-    });
-    return { ok: true, ...result };
-  } catch (err) {
-    return { ok: false, error: String(err) };
+    return { ok: true, data: validationFor(validId(rawCycleId)).result };
+  } catch (error) {
+    return failure(error, "validatePlanScenario");
   }
 }
 
-export async function markPlanReadyAction(cycleId: number): Promise<{ ok: boolean; scenario?: ReturnType<typeof updateCycleStatus>; error?: string }> {
+export async function markPlanReadyAction(rawCycleId: unknown): Promise<ActionResult<ReturnType<typeof updateCycleStatus>>> {
   try {
-    const scenario = getPlanScenario(cycleId);
-    if (!scenario) return { ok: false, error: "Piano non trovato." };
-    const result = validatePlanScenario(scenario, {
-      exams: getExams(),
-      previousCompiledEntries: getPreviousCompiledEntries(scenario.cycle.id),
-      baseRevisionScenario: scenario.cycle.revisionOfCycleId ? getPlanScenario(scenario.cycle.revisionOfCycleId) : null,
-    });
-    const errors = result.issues.filter((issue) => issue.type === "error");
-    if (errors.length > 0) return { ok: false, error: `Scenario non pronto: ${errors.length} errori bloccanti.` };
-    const updated = updateCycleStatus(cycleId, "ready", result.summary.approvalStatus);
-    revalidatePath("/", "layout");
-    return { ok: true, scenario: updated };
-  } catch (err) {
-    return { ok: false, error: String(err) };
+    const cycleId = validId(rawCycleId);
+    const { result } = validationFor(cycleId);
+    const errors = result.issues.filter((item) => item.type === "error");
+    if (errors.length) throw new Error(`Scenario non pronto: ${errors.length} errori bloccanti.`);
+    const scenario = updateCycleStatus(cycleId, "ready", result.summary.approvalStatus);
+    refresh();
+    return { ok: true, data: scenario };
+  } catch (error) {
+    return failure(error, "markPlanReady");
   }
 }
 
-export async function markPlanCompiledOnPolimiAction(cycleId: number): Promise<{ ok: boolean; scenario?: ReturnType<typeof updateCycleStatus>; error?: string }> {
+export async function markPlanCompiledOnPolimiAction(rawCycleId: unknown): Promise<ActionResult<ReturnType<typeof updateCycleStatus>>> {
   try {
-    const scenario = getPlanScenario(cycleId);
-    if (!scenario) return { ok: false, error: "Piano non trovato." };
-    const result = validatePlanScenario(scenario, {
-      exams: getExams(),
-      previousCompiledEntries: getPreviousCompiledEntries(scenario.cycle.id),
-      baseRevisionScenario: scenario.cycle.revisionOfCycleId ? getPlanScenario(scenario.cycle.revisionOfCycleId) : null,
-    });
-    const errors = result.issues.filter((issue) => issue.type === "error");
-    if (errors.length > 0) return { ok: false, error: `Non posso marcarlo compilato: ${errors.length} errori bloccanti.` };
+    const cycleId = validId(rawCycleId);
+    const { scenario, result } = validationFor(cycleId);
+    if (scenario.cycle.status !== "ready") throw new Error("Prima marca lo scenario come pronto.");
+    const errors = result.issues.filter((item) => item.type === "error");
+    if (errors.length) throw new Error(`Non compilabile: ${errors.length} errori bloccanti.`);
     const updated = updateCycleStatus(cycleId, "polimi_compiled", getApprovalStatus(scenario.entries));
-    revalidatePath("/", "layout");
-    return { ok: true, scenario: updated };
-  } catch (err) {
-    return { ok: false, error: String(err) };
+    refresh();
+    return { ok: true, data: updated };
+  } catch (error) {
+    return failure(error, "markPlanCompiled");
   }
 }
 
-export async function duplicatePlanForNextAcademicYearAction(cycleId: number): Promise<{ ok: boolean; scenario?: ReturnType<typeof duplicatePlanForNextAcademicYear>; error?: string }> {
+export async function createAnnualDraftAction(academicYear: unknown, studentYear: unknown, track: unknown): Promise<ActionResult<ReturnType<typeof createAnnualDraft>>> {
   try {
-    const scenario = duplicatePlanForNextAcademicYear(cycleId);
+    if (typeof academicYear !== "string") throw new Error("Anno accademico non valido.");
+    const year = Number(studentYear);
+    if (year !== 1 && year !== 2 && year !== 3) throw new Error("Anno studente non valido.");
+    if (track !== "I3I" && track !== "I3C") throw new Error("Percorso non valido.");
+    const scenario = createAnnualDraft(academicYear, year, track as Track);
     syncExamsWithPlan(scenario.entries.map((entry) => entry.courseCode));
-    revalidatePath("/", "layout");
-    return { ok: true, scenario };
-  } catch (err) {
-    return { ok: false, error: String(err) };
+    refresh();
+    return { ok: true, data: scenario };
+  } catch (error) {
+    return failure(error, "createAnnualDraft");
   }
 }
 
-export async function setPlanValidationModeAction(cycleId: number, mode: PlanValidationMode): Promise<{ ok: boolean; error?: string }> {
+export async function duplicatePlanForNextAcademicYearAction(rawCycleId: unknown): Promise<ActionResult<ReturnType<typeof duplicatePlanForNextAcademicYear>>> {
   try {
-    const scenario = getPlanScenario(cycleId);
-    if (!scenario) return { ok: false, error: "Piano non trovato." };
-    savePlanDraft({
-      cycleId,
-      academicYear: scenario.cycle.academicYear,
-      studentYear: scenario.cycle.studentYear,
-      track: scenario.cycle.track,
-      validationMode: mode,
-      status: scenario.cycle.status === "polimi_compiled" ? "draft" : scenario.cycle.status,
-      entries: scenario.entries.map((entry) => ({
-        courseCode: entry.courseCode,
-        courseYear: entry.courseYear,
-        position: entry.position,
-        origin: entry.origin,
-        isNewFrequency: entry.isNewFrequency,
-        feeCounted: entry.feeCounted,
-      })),
-    });
-    revalidatePath("/", "layout");
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: String(err) };
+    const scenario = duplicatePlanForNextAcademicYear(validId(rawCycleId));
+    syncExamsWithPlan(scenario.entries.map((entry) => entry.courseCode));
+    refresh();
+    return { ok: true, data: scenario };
+  } catch (error) {
+    return failure(error, "duplicatePlan");
   }
 }
 
-/** Set the status of a single exam. */
-export async function setExamStatusAction(code: string, status: ExamStatus, dates?: { passedAt?: string | null; registeredAt?: string | null }): Promise<{ ok: boolean; error?: string }> {
+export async function createSecondSemesterRevisionAction(rawCycleId: unknown): Promise<ActionResult<ReturnType<typeof createSecondSemesterRevision>>> {
   try {
-    setExamStatus(code, status, dates);
-    revalidatePath("/", "layout");
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: String(err) };
+    const scenario = createSecondSemesterRevision(validId(rawCycleId));
+    refresh();
+    return { ok: true, data: scenario };
+  } catch (error) {
+    return failure(error, "createRevision");
   }
 }
 
-/** Set the grade of a single exam (must already be passed). */
-export async function setExamGradeAction(code: string, grade: string | null): Promise<{ ok: boolean; error?: string }> {
+export async function setActivePlanCycleAction(rawCycleId: unknown): Promise<ActionResult<ReturnType<typeof setActivePlanCycle>>> {
   try {
-    setExamGrade(code, grade);
-    revalidatePath("/", "layout");
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: String(err) };
+    const scenario = setActivePlanCycle(validId(rawCycleId));
+    refresh();
+    return { ok: true, data: scenario };
+  } catch (error) {
+    return failure(error, "setActivePlanCycle");
   }
 }
 
-export async function markExamRegisteredAction(code: string, registeredAt: string | null = null): Promise<{ ok: boolean; error?: string }> {
+export async function archivePlanCycleAction(rawCycleId: unknown): Promise<ActionResult<ReturnType<typeof archivePlanCycle>>> {
   try {
-    markExamRegistered(code, registeredAt);
-    revalidatePath("/", "layout");
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: String(err) };
+    const scenario = archivePlanCycle(validId(rawCycleId));
+    refresh();
+    return { ok: true, data: scenario };
+  } catch (error) {
+    return failure(error, "archivePlanCycle");
   }
 }
 
-/** Set the mode (presenza/asincrona) of a single lesson occurrence. */
-export async function setLessonModeAction(id: number, mode: LessonMode): Promise<void> {
-  setLessonMode(id, mode);
-  revalidatePath("/", "layout");
+export async function restorePlanCycleAction(rawCycleId: unknown): Promise<ActionResult<ReturnType<typeof restorePlanCycle>>> {
+  try {
+    const scenario = restorePlanCycle(validId(rawCycleId));
+    refresh();
+    return { ok: true, data: scenario };
+  } catch (error) {
+    return failure(error, "restorePlanCycle");
+  }
+}
+
+export async function setExamStatusAction(code: unknown, status: unknown, dates?: { passedAt?: string | null; registeredAt?: string | null }): Promise<ActionResult> {
+  try {
+    if (typeof code !== "string" || typeof status !== "string") throw new Error("Dati esame non validi.");
+    setExamStatus(code, status as ExamStatus, dates);
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return failure(error, "setExamStatus");
+  }
+}
+
+export async function setExamGradeAction(code: unknown, grade: unknown): Promise<ActionResult> {
+  try {
+    if (typeof code !== "string" || (grade !== null && typeof grade !== "string")) throw new Error("Voto non valido.");
+    setExamGrade(code, grade as string | null);
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return failure(error, "setExamGrade");
+  }
+}
+
+export async function markExamRegisteredAction(code: unknown, registeredAt: unknown = null): Promise<ActionResult> {
+  try {
+    if (typeof code !== "string" || (registeredAt !== null && typeof registeredAt !== "string")) throw new Error("Dati di verbalizzazione non validi.");
+    markExamRegistered(code, registeredAt as string | null);
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return failure(error, "markExamRegistered");
+  }
 }

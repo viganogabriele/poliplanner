@@ -22,6 +22,8 @@ FROM base AS runner
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ENV TZ=Europe/Rome
+ENV POLIPLANNER_DB_PATH=/app/db/lesson_tracker.db
 
 # The standalone output includes only traced production dependencies.
 COPY --from=builder --chown=node:node /app/.next/standalone ./

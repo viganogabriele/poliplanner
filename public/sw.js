@@ -1,47 +1,47 @@
-const CACHE = 'lesson-tracker-v1'
-const PRECACHE = ['/manifest.webmanifest']
+const CACHE = "poliplanner-static-v2";
+const SAFE_ASSETS = [
+  "/offline.html",
+  "/manifest.webmanifest",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/icon-maskable-512.png",
+];
 
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE)))
-  self.skipWaiting()
-})
+self.addEventListener("install", (event) => {
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SAFE_ASSETS)));
+  self.skipWaiting();
+});
 
-self.addEventListener('activate', e => {
-  e.waitUntil(
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-      .then(() => clients.claim())
-  )
-})
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim())
+  );
+});
 
-self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (request.method !== "GET") return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
 
-  const { pathname } = new URL(e.request.url)
-
-  // Versioned static chunks are immutable — cache-first
-  if (pathname.startsWith('/_next/static/')) {
-    e.respondWith(
-      caches.match(e.request).then(
-        hit => hit || fetch(e.request).then(res => {
-          caches.open(CACHE).then(c => c.put(e.request, res.clone()))
-          return res
-        })
-      )
-    )
-    return
+  // Never persist HTML, RSC payloads, actions or other personal dynamic data.
+  if (request.mode === "navigate") {
+    event.respondWith(fetch(request).catch(() => caches.match("/offline.html")));
+    return;
   }
 
-  // Skip other /_next/ internals (HMR, data routes)
-  if (pathname.startsWith('/_next/')) return
+  const isHashedStatic = url.pathname.startsWith("/_next/static/");
+  const isSafeAsset = SAFE_ASSETS.includes(url.pathname);
+  if (!isHashedStatic && !isSafeAsset) return;
 
-  // HTML pages and static assets — network-first, cache as fallback
-  e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        caches.open(CACHE).then(c => c.put(e.request, res.clone()))
-        return res
-      })
-      .catch(() => caches.match(e.request))
-  )
-})
+  event.respondWith(
+    caches.match(request).then((cached) => cached || fetch(request).then((response) => {
+      if (response.ok && response.type === "basic") {
+        caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
+      }
+      return response;
+    }))
+  );
+});

@@ -1,187 +1,125 @@
-// ============================================================
-// Schedule business logic
-// ============================================================
-// This is the heart of the data model:
-//   1. Read the schedule from the DB.
-//   2. Validate and save new schedule rows.
-//   3. Regenerate lesson_occurrence from the schedule.
-//
-// Regeneration is the most interesting piece: it keeps a "materialized"
-// table of concrete lesson dates derived from recurrence rules. When you
-// edit the schedule and save, we diff desired vs existing occurrences so
-// that any lessons you've already marked done are PRESERVED.
-
+import type Database from "better-sqlite3";
 import { getDb } from "./db";
-import { dateRange, dateToWeekday, parseISODate } from "./dates";
+import { dateRange, dateToWeekday, daysBetween, isISODate, parseISODate } from "./dates";
 import type { LessonMode, ScheduleRow, ScheduleRowInput } from "./types";
 
-const VALID_MODES: Set<string> = new Set(["presenza", "asincrona"]);
+const VALID_MODES = new Set<LessonMode>(["presenza", "asincrona"]);
+const MAX_ROWS = 200;
+const MAX_RANGE_DAYS = 1_100;
 
-// ----- Read ----------------------------------------------------------------
-
-/** Return all schedule rows ordered by weekday then subject. */
 export function getSchedule(): ScheduleRow[] {
-  const db = getDb();
-  return db
-    .prepare(
-      `SELECT id, weekday, subject, start_date, end_date, mode
-       FROM schedule
-       ORDER BY weekday, subject`
-    )
-    .all() as ScheduleRow[];
+  return getDb().prepare(`
+    SELECT id, weekday, subject, course_code, start_date, end_date, mode
+    FROM schedule
+    ORDER BY weekday, subject, id
+  `).all() as ScheduleRow[];
 }
 
-// ----- Validate ------------------------------------------------------------
+export function validateScheduleRows(rows: unknown): ScheduleRowInput[] {
+  if (!Array.isArray(rows)) throw new Error("Il calendario deve essere un elenco di lezioni.");
+  if (rows.length > MAX_ROWS) throw new Error(`Il calendario può contenere al massimo ${MAX_ROWS} regole.`);
 
-/**
- * Validate and normalise an array of raw schedule row inputs from the client.
- * Invalid rows are silently dropped (same behaviour as original Flask app).
- * Returns only the rows that passed validation.
- */
-export function validateScheduleRows(
-  rows: unknown[]
-): ScheduleRowInput[] {
   const clean: ScheduleRowInput[] = [];
+  const ids = new Set<number>();
+  rows.forEach((raw, index) => {
+    if (typeof raw !== "object" || raw === null) throw new Error(`Riga ${index + 1}: formato non valido.`);
+    const value = raw as Record<string, unknown>;
+    const id = value.id === undefined || value.id === null ? undefined : Number(value.id);
+    const weekday = Number(value.weekday);
+    const subject = typeof value.subject === "string" ? value.subject.trim() : "";
+    const rawCode = typeof value.course_code === "string" ? value.course_code.trim().toUpperCase() : "";
+    const course_code = rawCode || null;
+    const start_date = typeof value.start_date === "string" ? value.start_date : "";
+    const end_date = typeof value.end_date === "string" ? value.end_date : "";
+    const mode = value.mode;
 
-  for (const raw of rows) {
-    if (typeof raw !== "object" || raw === null) continue;
-    const r = raw as Record<string, unknown>;
-
-    const weekday = Number(r.weekday);
-    const subject = String(r.subject ?? "").trim();
-    const start_date = String(r.start_date ?? "").trim();
-    const end_date = String(r.end_date ?? "").trim();
-    const mode = String(r.mode ?? "asincrona").trim();
-
-    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) continue;
-    if (!subject) continue;
-    if (!VALID_MODES.has(mode)) continue;
-
-    // Validate date strings
-    let startDate: Date, endDate: Date;
-    try {
-      startDate = parseISODate(start_date);
-      endDate = parseISODate(end_date);
-      // parseISODate must produce a valid Date
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) continue;
-    } catch {
-      continue;
+    if (id !== undefined && (!Number.isSafeInteger(id) || id <= 0 || ids.has(id))) {
+      throw new Error(`Riga ${index + 1}: identificatore non valido o duplicato.`);
     }
+    if (id !== undefined) ids.add(id);
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) throw new Error(`Riga ${index + 1}: giorno non valido.`);
+    if (subject.length < 1 || subject.length > 120) throw new Error(`Riga ${index + 1}: il nome deve contenere da 1 a 120 caratteri.`);
+    if (course_code && course_code.length > 32) throw new Error(`Riga ${index + 1}: codice corso troppo lungo.`);
+    if (!isISODate(start_date) || !isISODate(end_date)) throw new Error(`Riga ${index + 1}: usa date reali nel formato YYYY-MM-DD.`);
+    const span = daysBetween(start_date, end_date);
+    if (span < 0) throw new Error(`Riga ${index + 1}: la data finale precede quella iniziale.`);
+    if (span > MAX_RANGE_DAYS) throw new Error(`Riga ${index + 1}: l'intervallo non può superare tre anni.`);
+    if (typeof mode !== "string" || !VALID_MODES.has(mode as LessonMode)) throw new Error(`Riga ${index + 1}: modalità non valida.`);
 
-    if (endDate < startDate) continue;
-
-    clean.push({ weekday, subject, start_date, end_date, mode: mode as LessonMode });
-  }
-
+    clean.push({ id, weekday, subject, course_code, start_date, end_date, mode: mode as LessonMode });
+  });
   return clean;
 }
 
-// ----- Save ----------------------------------------------------------------
+function regenerateOccurrencesInTransaction(db: Database.Database): void {
+  const schedules = db.prepare(`
+    SELECT id, weekday, start_date, end_date
+    FROM schedule
+  `).all() as Pick<ScheduleRow, "id" | "weekday" | "start_date" | "end_date">[];
 
-/**
- * Replace the entire schedule with the provided rows, then regenerate
- * lesson occurrences. Returns the number of rows saved.
- *
- * This is a "full replace" strategy (same as the original app):
- * DELETE everything, INSERT new rows, then regenerate occurrences.
- * The regeneration step preserves `done` state for unchanged lesson dates.
- */
+  const insert = db.prepare(`
+    INSERT INTO lesson_occurrence (schedule_id, lesson_date, done, mode_override)
+    VALUES (?, ?, 0, NULL)
+    ON CONFLICT(schedule_id, lesson_date) DO NOTHING
+  `);
+  const keepDates = new Map<number, Set<string>>();
+
+  for (const schedule of schedules) {
+    const dates = new Set<string>();
+    for (const date of dateRange(schedule.start_date, schedule.end_date)) {
+      if (dateToWeekday(parseISODate(date)) !== schedule.weekday) continue;
+      dates.add(date);
+      insert.run(schedule.id, date);
+    }
+    keepDates.set(schedule.id, dates);
+  }
+
+  const existing = db.prepare("SELECT id, schedule_id, lesson_date FROM lesson_occurrence").all() as {
+    id: number;
+    schedule_id: number;
+    lesson_date: string;
+  }[];
+  const remove = db.prepare("DELETE FROM lesson_occurrence WHERE id = ?");
+  for (const occurrence of existing) {
+    if (!keepDates.get(occurrence.schedule_id)?.has(occurrence.lesson_date)) remove.run(occurrence.id);
+  }
+}
+
 export function saveSchedule(rows: ScheduleRowInput[]): number {
   const db = getDb();
+  const update = db.prepare(`
+    UPDATE schedule
+    SET weekday = @weekday, subject = @subject, course_code = @course_code,
+        start_date = @start_date, end_date = @end_date, mode = @mode
+    WHERE id = @id
+  `);
+  const insert = db.prepare(`
+    INSERT INTO schedule (weekday, subject, course_code, start_date, end_date, mode)
+    VALUES (@weekday, @subject, @course_code, @start_date, @end_date, @mode)
+  `);
 
-  const insertRow = db.prepare(
-    `INSERT INTO schedule (weekday, subject, start_date, end_date, mode)
-     VALUES (@weekday, @subject, @start_date, @end_date, @mode)`
-  );
-
-  // Wrap in a transaction so delete+insert is atomic.
-  const tx = db.transaction((validated: ScheduleRowInput[]) => {
-    db.prepare("DELETE FROM schedule").run();
-    for (const row of validated) insertRow.run(row);
+  const save = db.transaction(() => {
+    const currentIds = new Set((db.prepare("SELECT id FROM schedule").all() as { id: number }[]).map((row) => row.id));
+    const retained = new Set<number>();
+    for (const row of rows) {
+      if (row.id !== undefined) {
+        if (!currentIds.has(row.id)) throw new Error(`La regola calendario ${row.id} non esiste più.`);
+        update.run(row);
+        retained.add(row.id);
+      } else {
+        const result = insert.run(row);
+        retained.add(Number(result.lastInsertRowid));
+      }
+    }
+    const remove = db.prepare("DELETE FROM schedule WHERE id = ?");
+    for (const id of currentIds) if (!retained.has(id)) remove.run(id);
+    regenerateOccurrencesInTransaction(db);
   });
-
-  tx(rows);
-  regenerateOccurrences();
+  save();
   return rows.length;
 }
 
-// ----- Regenerate ----------------------------------------------------------
-
-/**
- * Rebuild lesson_occurrence to match the current schedule.
- *
- * Algorithm (explained):
- *  1. Load all schedule rows and compute every (subject, lesson_date) pair
- *     that SHOULD exist, given each row's weekday and date range.
- *  2. Load all existing (subject, lesson_date) pairs from lesson_occurrence.
- *  3. Diff: new pairs → INSERT; pairs in both → UPDATE weekday/mode (keep done);
- *     removed pairs → DELETE.
- *
- * The UNIQUE(subject, lesson_date) constraint on the table means we can
- * use INSERT OR IGNORE for new rows and UPDATE for existing ones safely.
- */
 export function regenerateOccurrences(): void {
   const db = getDb();
-
-  // Step 1: Compute desired set
-  const scheduleRows = db
-    .prepare("SELECT weekday, subject, start_date, end_date, mode FROM schedule")
-    .all() as Omit<ScheduleRow, "id">[];
-
-  // Map of "subject|lesson_date" → {weekday, mode}
-  const desired = new Map<string, { weekday: number; mode: LessonMode }>();
-
-  for (const row of scheduleRows) {
-    for (const dateStr of dateRange(row.start_date, row.end_date)) {
-      const d = parseISODate(dateStr);
-      if (dateToWeekday(d) === row.weekday) {
-        const key = `${row.subject}|${dateStr}`;
-        desired.set(key, { weekday: row.weekday, mode: row.mode as LessonMode });
-      }
-    }
-  }
-
-  // Step 2: Load existing
-  const existingRows = db
-    .prepare("SELECT id, subject, lesson_date FROM lesson_occurrence")
-    .all() as { id: number; subject: string; lesson_date: string }[];
-
-  const existing = new Map<string, number>(); // key → id
-  for (const row of existingRows) {
-    existing.set(`${row.subject}|${row.lesson_date}`, row.id);
-  }
-
-  // Step 3: Diff and apply
-  const insertOcc = db.prepare(
-    `INSERT INTO lesson_occurrence (subject, weekday, lesson_date, mode, done)
-     VALUES (@subject, @weekday, @lesson_date, @mode, 0)`
-  );
-  const updateOcc = db.prepare(
-    `UPDATE lesson_occurrence SET weekday = @weekday, mode = @mode WHERE id = @id`
-  );
-  const deleteOcc = db.prepare(
-    `DELETE FROM lesson_occurrence WHERE id = @id`
-  );
-
-  const tx = db.transaction(() => {
-    for (const [key, { weekday, mode }] of desired) {
-      const [subject, lesson_date] = key.split("|");
-      if (!existing.has(key)) {
-        // New lesson date → insert
-        insertOcc.run({ subject, weekday, lesson_date, mode });
-      } else {
-        // Existing lesson date → update metadata, preserve done
-        updateOcc.run({ weekday, mode, id: existing.get(key) });
-      }
-    }
-
-    for (const [key, id] of existing) {
-      if (!desired.has(key)) {
-        // This date is no longer in the schedule → delete
-        deleteOcc.run({ id });
-      }
-    }
-  });
-
-  tx();
+  db.transaction(() => regenerateOccurrencesInTransaction(db))();
 }

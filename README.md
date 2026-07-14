@@ -14,7 +14,7 @@ Planner locale e self-hostable per studenti del Politecnico di Milano. Permette 
 | Materie | Dettaglio di ciascuna materia, lezioni da recuperare/guardare ed esame collegato. |
 | Piano di studi | Scenari annuali o di revisione, validazione CFU/vincoli, reinserimenti e stima CFU tassabili. |
 | Esami | Stato, data di superamento/registrazione, voto, media pesata e stima del voto di laurea. |
-| PWA | Service worker, manifest e installazione quando supportata dal browser. |
+| PWA | Installabile con asset statici; non memorizza pagine o dati personali del planner. |
 
 ## Stack e requisiti
 
@@ -56,7 +56,9 @@ PORT=8333 pnpm start
 
 ## Dati e backup
 
-Il database viene creato automaticamente in `db/lesson_tracker.db`; non è incluso in Git. SQLite usa anche file temporanei `-wal` e `-shm` mentre l'app è in esecuzione.
+Il database viene creato automaticamente in `db/lesson_tracker.db`; non è incluso in Git. SQLite usa anche file temporanei `-wal` e `-shm` mentre l'app è in esecuzione. Per un percorso diverso si può impostare `POLIPLANNER_DB_PATH` (utile in deploy); la directory viene creata automaticamente.
+
+Al primo avvio di una versione legacy, Poliplanner crea un backup coerente `lesson_tracker.pre-v2-<timestamp>.db` prima del reset autorizzato allo schema v2. Se il backup fallisce, il database originale non viene modificato.
 
 Per un backup coerente, fermare l'app/contenitore e copiare l'intera directory `db/`. Per un'istanza Docker, il volume si chiama `poliplanner-data`:
 
@@ -95,7 +97,7 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
-L'app risponde sulla porta `3000` del server. Per aggiornare:
+Per impostazione predefinita l'app risponde solo su `127.0.0.1:3000`, adatta a un reverse proxy sullo stesso host. Per esporla in LAN modifica esplicitamente il mapping in `compose.yaml`. Per aggiornare:
 
 ```bash
 git pull
@@ -129,12 +131,11 @@ db                 dati SQLite locali (ignorati da Git)
 
 | Tabella | Responsabilità |
 | --- | --- |
-| `schedule` | Regole di lezione ricorrenti per giorno/data/modalità. |
-| `lesson_occurrence` | Occorrenze concrete materializzate, incluso il flag di completamento. |
-| `settings` | Configurazione chiave-valore, incluso il percorso scelto. |
-| `study_plan` | Tabella legacy, mantenuta per compatibilità. |
-| `study_plan_cycles` | Metadati degli scenari del piano per anno accademico e stato. |
-| `study_plan_entries` | Insegnamenti di uno scenario e relativi attributi. |
+| `schedule` | Regole ricorrenti con ID stabile, materia, codice corso opzionale e modalità predefinita. |
+| `lesson_occurrence` | Occorrenze materializzate collegate a `schedule_id`, completamento e override di modalità. |
+| `settings` | Configurazione chiave-valore, incluso lo scenario del piano attivo. |
+| `study_plan_cycles` | Scenari: stato (`draft`/`ready`/`polimi_compiled`) separato dall'archiviazione. |
+| `study_plan_entries` | Attività catalogo o esterne, semestre, posizione e metadati calcolati dal server. |
 | `exams` | Stato, voto e date degli esami per codice corso. |
 
 ## Licenza
