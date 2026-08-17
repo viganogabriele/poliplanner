@@ -1,6 +1,7 @@
 import { getDb } from "./db";
 import { today } from "./dates";
-import { COURSES } from "./polimi/courses";
+import { getCatalog, findCourse } from "./polimi/catalog";
+import { getCurrentPlanScenario } from "./piano";
 import { getExams } from "./esami";
 import type { ExamRecord } from "./esami";
 import type { LessonMode } from "./types";
@@ -45,11 +46,16 @@ export function normalizeSubjectName(value: string): string {
     .trim();
 }
 
+/** Il catalogo di riferimento è quello dell'anno accademico del piano attivo. */
+function activeCatalog() {
+  return getCatalog(getCurrentPlanScenario().cycle.academicYear);
+}
+
 function findRelatedCourse(subjectName: string) {
   const normalizedSubject = normalizeSubjectName(subjectName);
   if (!normalizedSubject) return undefined;
 
-  return COURSES.find((course) => {
+  return activeCatalog().courses.find((course) => {
     if (course.isLinkedExam) return false;
     const normalizedCourse = normalizeSubjectName(course.name);
     return normalizedCourse === normalizedSubject
@@ -95,7 +101,7 @@ export function getSubjectData(subjectName: string): SubjectData | null {
     ORDER BY id LIMIT 1
   `).get(subjectName) as { course_code: string } | undefined;
   const relatedCourse = explicitCode
-    ? COURSES.find((course) => course.code === explicitCode.course_code)
+    ? findCourse(activeCatalog(), explicitCode.course_code)
     : findRelatedCourse(subjectName);
   const exams = relatedCourse ? getExams() : undefined;
 

@@ -1,4 +1,4 @@
-import { getCurrentPlanScenario, getPlanScenario, getPreviousCompiledEntries, listPlanCycles } from "@/lib/piano";
+import { getBaseRevisionScenario, getCurrentPlanScenario, getPlanScenario, getPreviousCompiledEntries, listPlanCycles } from "@/lib/piano";
 import { getExams } from "@/lib/esami";
 import PianoClient from "@/features/piano/PianoClient";
 import { PageShell } from "@/components/ui/PageShell";
@@ -12,9 +12,6 @@ export default async function PianoPage({ searchParams }: { searchParams: Promis
   const scenario = Number.isSafeInteger(requested) && requested > 0
     ? getPlanScenario(requested) ?? activeScenario
     : activeScenario;
-  const exams = getExams();
-  const previousCompiledEntries = getPreviousCompiledEntries(scenario.cycle.id);
-  const baseRevisionScenario = scenario.cycle.revisionOfCycleId ? getPlanScenario(scenario.cycle.revisionOfCycleId) : null;
 
   return (
     <PageShell className="max-w-[1440px]">
@@ -23,9 +20,9 @@ export default async function PianoPage({ searchParams }: { searchParams: Promis
         initialScenario={scenario}
         initialCycles={listPlanCycles()}
         activeCycleId={activeScenario.cycle.id}
-        initialExams={exams}
-        previousCompiledEntries={previousCompiledEntries}
-        baseRevisionScenario={baseRevisionScenario}
+        initialExams={getExams()}
+        previousCompiledEntries={getPreviousCompiledEntries(scenario.cycle.id)}
+        baseRevisionScenario={getBaseRevisionScenario(scenario)}
       />
     </PageShell>
   );

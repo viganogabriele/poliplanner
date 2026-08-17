@@ -8,7 +8,7 @@
 import { getDb } from "./db";
 import { dateToWeekday, parseISODate, WEEKDAY_LABELS, today } from "./dates";
 import { getExams } from "./esami";
-import { weightedAverage } from "./polimi/gradeCalc";
+import { careerAverage } from "./polimi/gradeCalc";
 import { getCurrentPlanScenario } from "./piano";
 import type {
   DashboardPayload,
@@ -116,14 +116,14 @@ export function getDashboard(): DashboardPayload {
   });
 
   // --- Exam stats ---
+  // La carriera è la fonte di verità: il piano annuale copre solo un anno accademico.
   const examsMap = getExams();
-  const activeEntries = getCurrentPlanScenario().entries.filter((entry) => entry.position === "effective");
-  const effectiveCodes = activeEntries.map((entry) => entry.courseCode);
-  const exam_total_count = effectiveCodes.length;
-  const exam_passed_count = effectiveCodes.filter(code =>
-    examsMap[code]?.status === 'passed_registered'
-  ).length;
-  const { average: exam_average } = weightedAverage(examsMap, activeEntries);
+  const planCodes = getCurrentPlanScenario().entries
+    .filter((entry) => entry.position === "effective")
+    .map((entry) => entry.courseCode);
+  const trackedCodes = new Set([...Object.keys(examsMap), ...planCodes]);
+  const exam_total_count = trackedCodes.size;
+  const { average: exam_average, registeredCount: exam_passed_count } = careerAverage(examsMap);
 
   return {
     today: todayStr,

@@ -11,6 +11,7 @@ import {
   createAnnualDraft,
   createSecondSemesterRevision,
   duplicatePlanForNextAcademicYear,
+  getBaseRevisionScenario,
   getPlanScenario,
   getPreviousCompiledEntries,
   restorePlanCycle,
@@ -19,7 +20,16 @@ import {
   updateCycleStatus,
   type PlanDraftPayload,
 } from "@/lib/piano";
-import { getExams, markExamRegistered, setExamGrade, setExamStatus, syncExamsWithPlan } from "@/lib/esami";
+import {
+  deleteCareerExam,
+  getExams,
+  importCareerExams,
+  markExamRegistered,
+  setExamGrade,
+  setExamStatus,
+  syncExamsWithPlan,
+  upsertCareerExam,
+} from "@/lib/esami";
 import { getApprovalStatus, validatePlanScenario } from "@/lib/polimi/validation";
 import type { ExamStatus, Track } from "@/lib/polimi/constraints";
 import type { LessonMode } from "@/lib/types";
@@ -51,9 +61,67 @@ function validationFor(cycleId: number) {
     result: validatePlanScenario(scenario, {
       exams: getExams(),
       previousCompiledEntries: getPreviousCompiledEntries(scenario.cycle.id),
-      baseRevisionScenario: scenario.cycle.revisionOfCycleId ? getPlanScenario(scenario.cycle.revisionOfCycleId) : null,
+      baseRevisionScenario: getBaseRevisionScenario(scenario),
     }),
   };
+}
+
+const EXAM_STATUSES: ExamStatus[] = ["planned", "not_passed", "passed_unregistered", "passed_registered", "not_required", "no_class"];
+
+function validExamStatus(value: unknown): ExamStatus {
+  if (typeof value !== "string" || !EXAM_STATUSES.includes(value as ExamStatus)) throw new Error("Stato esame non valido.");
+  return value as ExamStatus;
+}
+
+export async function upsertCareerExamAction(input: unknown): Promise<ActionResult> {
+  try {
+    if (typeof input !== "object" || input === null) throw new Error("Dati carriera non validi.");
+    const raw = input as Record<string, unknown>;
+    if (typeof raw.code !== "string") throw new Error("Codice corso non valido.");
+    upsertCareerExam({
+      code: raw.code,
+      status: validExamStatus(raw.status),
+      grade: raw.grade === undefined ? undefined : (raw.grade as string | null),
+      passedAt: (raw.passedAt as string | null) ?? null,
+      registeredAt: (raw.registeredAt as string | null) ?? null,
+    });
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return failure(error, "upsertCareerExam");
+  }
+}
+
+export async function importCareerExamsAction(rows: unknown): Promise<ActionResult<{ imported: number }>> {
+  try {
+    if (!Array.isArray(rows)) throw new Error("Formato import non valido.");
+    const imported = importCareerExams(rows.map((row) => {
+      const raw = row as Record<string, unknown>;
+      if (typeof raw?.code !== "string") throw new Error("Ogni riga deve avere un codice corso.");
+      return {
+        code: raw.code,
+        status: validExamStatus(raw.status),
+        grade: (raw.grade as string | null) ?? null,
+        passedAt: (raw.passedAt as string | null) ?? null,
+        registeredAt: (raw.registeredAt as string | null) ?? null,
+      };
+    }));
+    refresh();
+    return { ok: true, data: { imported } };
+  } catch (error) {
+    return failure(error, "importCareerExams");
+  }
+}
+
+export async function deleteCareerExamAction(code: unknown): Promise<ActionResult> {
+  try {
+    if (typeof code !== "string") throw new Error("Codice corso non valido.");
+    deleteCareerExam(code);
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return failure(error, "deleteCareerExam");
+  }
 }
 
 export async function saveScheduleAction(rows: unknown): Promise<ActionResult> {

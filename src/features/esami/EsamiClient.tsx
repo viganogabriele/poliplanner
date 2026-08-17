@@ -6,10 +6,9 @@ import { CheckCircle2, ChevronUp, Pencil, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
-import { getCourse } from "@/lib/polimi/courses";
-import { sumCFU } from "@/lib/polimi/cfuCalc";
-import { weightedAverage, estimateFinalGrade } from "@/lib/polimi/gradeCalc";
-import { GRADE_MIN, GRADE_MAX } from "@/lib/polimi/constraints";
+import { findCourse, getCatalog } from "@/lib/polimi/catalog";
+import { careerAverage, estimateFinalGrade } from "@/lib/polimi/gradeCalc";
+import { GRADE_MIN, GRADE_MAX, REINSERTION_ORIGINS } from "@/lib/polimi/constraints";
 import { markExamRegisteredAction, setExamStatusAction, setExamGradeAction } from "@/app/actions";
 import { celebrate, celebrateBig } from "@/components/ui/Confetti";
 import InfoButton from "@/components/ui/InfoButton";
@@ -61,31 +60,27 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
   const [toast, setToast] = useState<Toast | null>(null);
   const [, startTransition] = useTransition();
 
+  // Il catalogo è quello dell'anno accademico del piano: non esiste un anno "di default".
+  const catalog = useMemo(() => getCatalog(scenario.cycle.academicYear), [scenario.cycle.academicYear]);
   const rows = useMemo(
     () =>
       entries
-        .map((entry) => ({ entry, course: getCourse(entry.courseCode) }))
+        .map((entry) => ({ entry, course: findCourse(catalog, entry.courseCode) }))
         .filter(isExamCourseRow),
-    [entries]
+    [entries, catalog]
   );
+  const sumCfu = (selected: typeof rows) => selected.reduce((total, row) => total + row.course.cfu, 0);
 
-  const { average, passedCFU } = useMemo(() => weightedAverage(optimisticExams, entries), [optimisticExams, entries]);
+  // La media e i CFU acquisiti guardano l'intera carriera; le due metriche di piano
+  // guardano solo l'anno accademico corrente.
+  const { average, registeredCfu: passedCFU } = useMemo(
+    () => careerAverage(optimisticExams, scenario.cycle.academicYear),
+    [optimisticExams, scenario.cycle.academicYear]
+  );
   const estimatedFinal = useMemo(() => estimateFinalGrade(average), [average]);
 
-  const feeCFU = sumCFU(
-    rows
-      .filter(({ entry }) =>
-        entry.feeCounted &&
-        (entry.courseYear === scenario.cycle.studentYear ||
-          ["carried_over", "recovery_reinserted"].includes(entry.origin))
-      )
-      .map(({ course }) => course)
-  );
-  const recoveredCFU = sumCFU(
-    rows
-      .filter(({ entry }) => !entry.feeCounted && ["carried_over", "recovery_reinserted"].includes(entry.origin))
-      .map(({ course }) => course)
-  );
+  const newFrequencyCFU = sumCfu(rows.filter(({ entry }) => !REINSERTION_ORIGINS.includes(entry.origin)));
+  const reinsertedCFU = sumCfu(rows.filter(({ entry }) => REINSERTION_ORIGINS.includes(entry.origin)));
   const registeredCount = rows.filter(
     ({ entry }) =>
       entry.position === "effective" && optimisticExams[entry.courseCode]?.status === "passed_registered"
@@ -247,21 +242,22 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
             </InfoButton>
           </div>
         </div>
-        <StatTile label="CFU Registrati" value={`${passedCFU}`} accent="green" />
+        <StatTile label="CFU Verbalizzati" value={`${passedCFU}`} accent="green" />
         <div className="relative">
-          <StatTile label="CFU Tassa Anno" value={`${feeCFU}`} />
+          <StatTile label="CFU Nuove Frequenze" value={`${newFrequencyCFU}`} />
           <div className="absolute right-2 top-2">
-            <InfoButton title="CFU Tassa Anno">
-              <p>CFU per cui paghi la tassa di iscrizione nell&apos;anno corrente.</p>
-              <p>Include i corsi effettivi dell&apos;anno + i recuperi non ancora verbalizzati.</p>
+            <InfoButton title="CFU Nuove Frequenze">
+              <p>Corsi che segui per la prima volta in questo anno accademico.</p>
+              <p>Sono i soli conteggiati per la contribuzione: i reinserimenti sono già stati pagati.</p>
             </InfoButton>
           </div>
         </div>
         <div className="relative">
-          <StatTile label="Recuperi Scalati" value={`${recoveredCFU}`} accent="green" />
+          <StatTile label="CFU Reinseriti" value={`${reinsertedCFU}`} accent="amber" />
           <div className="absolute right-2 top-2">
-            <InfoButton title="Recuperi Scalati">
-              <p>CFU di esami recuperati che sono stati verbalizzati e quindi <strong>non paghi</strong> di tassa.</p>
+            <InfoButton title="CFU Reinseriti">
+              <p>Esami già frequentati e non ancora verbalizzati, riportati nel piano di quest&apos;anno.</p>
+              <p>Non contano nei CFU di nuova frequenza.</p>
             </InfoButton>
           </div>
         </div>
@@ -492,7 +488,7 @@ function GradeInput({ grade, onChange }: { grade: string | null; onChange: (g: s
   );
 }
 
-function isExamCourseRow(row: { entry: PlanEntry; course: ReturnType<typeof getCourse> }): row is { entry: PlanEntry; course: NonNullable<ReturnType<typeof getCourse>> } {
+function isExamCourseRow(row: { entry: PlanEntry; course: ReturnType<typeof findCourse> }): row is { entry: PlanEntry; course: NonNullable<ReturnType<typeof findCourse>> } {
   if (!row.course) return false;
   return !row.course.isLinkedExam;
 }
