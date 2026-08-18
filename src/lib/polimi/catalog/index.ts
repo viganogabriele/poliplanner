@@ -133,6 +133,26 @@ export function courseGroup(
   return course.electiveGroup;
 }
 
+/**
+ * Nome leggibile di un gruppo/tabella. La UI non deve mai mostrare una sigla nuda come "TABREC":
+ * il catalogo dell'anno dichiara l'etichetta, qui la si legge con un fallback prudente.
+ */
+export function groupLabel(catalog: Catalog, group: string | null | undefined): string | null {
+  if (!group) return null;
+  return catalog.electiveGroups[group]?.label ?? group;
+}
+
+/** Descrizione del gruppo, quando il catalogo la fornisce. */
+export function groupDescription(catalog: Catalog, group: string | null | undefined): string | null {
+  if (!group) return null;
+  return catalog.electiveGroups[group]?.description ?? null;
+}
+
+/** Elenco leggibile di più gruppi, per i messaggi delle regole. */
+export function groupLabelList(catalog: Catalog, groups: string[]): string {
+  return groups.map((group) => groupLabel(catalog, group) ?? group).join(", ");
+}
+
 /** Tutti i gruppi in cui il corso appare per un percorso, indipendentemente da anno e semestre. */
 export function courseGroupsForTrack(catalog: Catalog, code: string, track: Track): string[] {
   const course = findCourse(catalog, code);

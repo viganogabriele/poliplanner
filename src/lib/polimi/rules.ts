@@ -1,6 +1,18 @@
 /**
  * Motore di valutazione delle regole strutturali, guidato dalla configurazione dichiarativa
- * del catalogo (`catalog.rules`). Nessun codice insegnamento è scritto qui.
+ * del catalogo (`catalog.rules`). Nessun codice insegnamento e nessuna soglia è scritta qui.
+ *
+ * Due invarianti governano tutto il modulo:
+ *
+ * 1. **Una regola non ancora esigibile non è mai un problema del piano corrente.** Se il vincolo
+ *    scatta a un anno di corso successivo a quello che si sta pianificando, la segnalazione resta
+ *    un'informazione sul futuro: non diventa né errore né avviso. Uno studente del primo anno non
+ *    deve leggere "Attenzione" per il gruppo da 15 CFU del terzo.
+ * 2. **Un'attività conta in un gruppo a scelta solo nel contesto in cui è stata scelta.** Non basta
+ *    che l'insegnamento compaia da qualche parte in quella tabella: conta il gruppo con cui è
+ *    entrato nel piano o nella carriera. Logica e Algebra scelta nel blocco del secondo anno e non
+ *    verbalizzata resta un reinserimento di quel blocco; la stessa Logica scelta al terzo anno
+ *    nella tabella dei recuperi pesa sui 15 CFU.
  *
  * Una regola è soddisfatta se le attività richieste sono "coperte", dove coperto significa:
  * verbalizzato in carriera, dichiarato non richiesto, oppure presente nel piano annuale corrente.
@@ -9,9 +21,10 @@
  * Modulo puro: nessun accesso al database.
  */
 
-import { courseCfu, courseGroupsForTrack, courseName, courseOfferings, findCourse } from "./catalog";
+import { courseCfu, courseName, courseOfferings, findCourse, groupLabel, groupLabelList } from "./catalog";
 import type { Catalog, CourseYear, PlanRule, RuleProvenance } from "./catalog/types";
 import type { PlanValidationMode, Track } from "./constraints";
+import type { StructuralChoice } from "./structuralChoice";
 
 export type RuleEvalContext = {
   catalog: Catalog;
@@ -29,6 +42,15 @@ export type RuleEvalContext = {
   externalChoiceCfu: number;
   /** Gruppo dell'offerta con cui ogni voce del piano è stata inserita. */
   groupByPlanCode: Map<string, string | null>;
+  /**
+   * Gruppo in cui ogni attività coperta risulta **effettivamente scelta**: dal piano corrente,
+   * dallo storico dei piani compilati o, in mancanza, dall'unica offerta possibile.
+   * `null` quando il contesto non è determinabile: in quel caso l'attività non viene attribuita
+   * a nessun gruppo a scelta, invece di essere contata a caso.
+   */
+  coverageGroup: Map<string, string | null>;
+  /** Stato delle scelte obbligate condizionate ("se non scelto al secondo anno..."). */
+  structuralChoices: StructuralChoice[];
 };
 
 export type RuleFinding = {
@@ -39,6 +61,8 @@ export type RuleFinding = {
   satisfied: boolean;
   /** true quando la regola è già esigibile per l'anno di corso pianificato. */
   dueNow: boolean;
+  /** Anno di corso entro cui la regola va soddisfatta, se la regola lo dichiara. */
+  dueByYear: CourseYear | null;
   /** Codici richiesti e non ancora coperti. */
   missing: string[];
   /** Spiegazione in linguaggio semplice del problema, vuota se soddisfatta. */
@@ -51,17 +75,23 @@ export type RuleFinding = {
 const names = (catalog: Catalog, codes: string[]): string =>
   codes.map((code) => `${courseName(catalog, code)} (${code})`).join(", ");
 
-function isDue(rule: PlanRule, track: Track, studentYear: CourseYear): { applies: boolean; dueNow: boolean } {
-  if (!("dueByYear" in rule)) return { applies: true, dueNow: true };
-  if (rule.tracks && !rule.tracks.includes(track)) return { applies: false, dueNow: false };
-  return { applies: true, dueNow: rule.dueByYear <= studentYear };
+type Applicability = { applies: boolean; dueNow: boolean; dueByYear: CourseYear | null };
+
+function isDue(rule: PlanRule, track: Track, studentYear: CourseYear): Applicability {
+  if (!("dueByYear" in rule)) return { applies: true, dueNow: true, dueByYear: null };
+  if (rule.tracks && !rule.tracks.includes(track)) return { applies: false, dueNow: false, dueByYear: rule.dueByYear };
+  return { applies: true, dueNow: rule.dueByYear <= studentYear, dueByYear: rule.dueByYear };
 }
 
-function finding(partial: Omit<RuleFinding, "severityHint"> & { severityHint?: RuleFinding["severityHint"] }): RuleFinding {
-  return {
-    ...partial,
-    severityHint: partial.severityHint ?? (partial.satisfied ? "advice" : partial.dueNow ? "blocking" : "advice"),
-  };
+/**
+ * Costruisce il risultato applicando l'invariante 1: fuori dall'anno di esigibilità la gravità
+ * viene abbassata a "informazione", qualunque cosa abbia chiesto il singolo ramo di valutazione.
+ */
+function finding(
+  partial: Omit<RuleFinding, "severityHint"> & { severityHint?: RuleFinding["severityHint"] }
+): RuleFinding {
+  const requested = partial.severityHint ?? (partial.satisfied ? "advice" : "blocking");
+  return { ...partial, severityHint: partial.dueNow ? requested : "advice" };
 }
 
 /**
@@ -94,47 +124,137 @@ function isReachable(target: number, sizes: number[]): boolean {
   return false;
 }
 
+type Discharge = { codes: string[]; recoveryLabel: string; recoverySource: string };
+
 /**
- * Valuta tutte le regole. I gruppi a scelta sono valutati in seconda passata perché devono
- * escludere le attività già "consumate" da blocchi e bundle obbligatori (evita doppi conteggi:
- * per esempio Logica e Algebra sostenuta nel blocco B1 non vale anche come 5 CFU a scelta).
+ * Regole del biennio assolte dalla via alternativa della tabella di recupero.
+ *
+ * Il Regolamento dà due strade per lo stesso obbligo: scegliere l'insegnamento nel blocco del
+ * secondo anno, oppure — se non lo si è scelto — nella tabella di recupero al terzo. Chi prende la
+ * seconda strada ha adempiuto: pretendere ancora il blocco del secondo anno, e con esso il modulo
+ * di progetto da 1 CFU che le tabelle del terzo anno non elencano, sarebbe un errore inventato.
+ *
+ * Il collegamento è dichiarato nel catalogo (`dischargesRuleIds`): qui non c'è nessun codice.
  */
+function recoveryDischarges(context: RuleEvalContext): Map<string, Discharge> {
+  const discharges = new Map<string, Discharge>();
+  const onRecoveryPath = new Set(
+    context.structuralChoices
+      .filter((choice) => choice.state === "choose_in_recovery_table")
+      .map((choice) => choice.courseCode)
+  );
+  if (onRecoveryPath.size === 0) return discharges;
+
+  const byId = new Map(context.catalog.rules.map((rule) => [rule.id, rule]));
+
+  for (const rule of context.catalog.rules) {
+    if (rule.kind !== "recovery_required" || !rule.dischargesRuleIds) continue;
+    if (rule.tracks && !rule.tracks.includes(context.track)) continue;
+    for (const targetId of rule.dischargesRuleIds) {
+      const target = byId.get(targetId);
+      if (!target) continue;
+      const targetCodes = ruleCodes(target);
+      const covering = rule.codes.filter((code) => onRecoveryPath.has(code) && targetCodes.includes(code));
+      if (covering.length === 0) continue;
+      const existing = discharges.get(targetId);
+      discharges.set(targetId, {
+        codes: [...(existing?.codes ?? []), ...covering],
+        recoveryLabel: rule.label,
+        recoverySource: rule.source,
+      });
+    }
+  }
+  return discharges;
+}
+
+/** Tutti i codici nominati da una regola, indipendentemente dalla sua forma. */
+function ruleCodes(rule: PlanRule): string[] {
+  switch (rule.kind) {
+    case "required_all":
+    case "exactly_one":
+    case "recovery_required":
+    case "single_instance":
+    case "advisory_any_of":
+      return rule.codes;
+    case "alternatives":
+      return rule.options.flatMap((option) => [...option.requireAll, ...(option.pickOneOf?.codes ?? [])]);
+    case "bundle_exactly_one":
+      return rule.bundles.flatMap((bundle) => bundle.codes);
+    case "linked_modules":
+      return rule.pairs.flatMap((pair) => [pair.parent, pair.module]);
+    default:
+      return [];
+  }
+}
+
+/**
+ * Riscrive un esito non soddisfatto quando l'obbligo è stato assolto per via della tabella di
+ * recupero. Non è un errore, e non è nemmeno pienamente documentato: il Regolamento indica la
+ * tabella di recupero per l'insegnamento, ma non dice come si completino gli eventuali CFU
+ * residui del blocco del secondo anno. Resta quindi una verifica, dichiarata come tale.
+ */
+function applyDischarge(finding: RuleFinding, discharge: Discharge, catalog: Catalog): RuleFinding {
+  const stillMissing = finding.missing.filter((code) => !discharge.codes.includes(code));
+  return {
+    ...finding,
+    satisfied: true,
+    missing: [],
+    severityHint: "advice",
+    provenance: "operational_to_verify",
+    source: `${finding.source}; assolto da: ${discharge.recoverySource}`,
+    detail: `Questo blocco del secondo anno è assolto scegliendo ${names(catalog, discharge.codes)} nella tabella di recupero del terzo anno, come previsto da "${discharge.recoveryLabel}". `
+      + (stillMissing.length > 0
+        ? `Le tabelle del terzo anno elencano quell'insegnamento senza ${names(catalog, stillMissing)}: verifica sui Servizi Online se ti viene richiesto comunque.`
+        : "Le tabelle del terzo anno non richiedono il modulo di progetto associato al blocco del secondo anno."),
+  };
+}
+
 /**
  * Valuta tutte le regole. I gruppi a scelta sono valutati in seconda passata perché devono
- * escludere le attività già "consumate" da blocchi e bundle obbligatori (evita doppi conteggi:
- * per esempio Logica e Algebra sostenuta nel blocco B1 non vale anche come 5 CFU a scelta,
- * mentre la stessa Logica recuperata in TABREC al terzo anno contribuisce eccome).
+ * conoscere le attività già "consumate" dai blocchi obbligatori.
  */
 export function evaluateRules(context: RuleEvalContext): RuleFinding[] {
   const { catalog, track, studentYear } = context;
   const findings: RuleFinding[] = [];
-  const reserved = new Set<string>();
   const choiceRules: Extract<PlanRule, { kind: "choice_cfu" }>[] = [];
+  const discharges = recoveryDischarges(context);
 
   for (const rule of catalog.rules) {
-    const { applies, dueNow } = isDue(rule, track, studentYear);
-    if (!applies) continue;
+    const applicability = isDue(rule, track, studentYear);
+    if (!applicability.applies) continue;
     if (rule.kind === "choice_cfu") {
       choiceRules.push(rule);
       continue;
     }
-    const result = evaluateStructuralRule(rule, context, dueNow);
+    const result = evaluateStructuralRule(rule, context, applicability);
     if (!result) continue;
-    findings.push(result);
-    for (const code of result.reserved) reserved.add(code);
+    const discharge = discharges.get(rule.id);
+    findings.push(!result.satisfied && discharge ? applyDischarge(result, discharge, catalog) : result);
   }
 
+  // I gruppi a scelta arrivano dopo perché leggono il contesto di copertura completo, incluse
+  // le voci che i blocchi obbligatori hanno già collocato altrove.
   for (const rule of choiceRules) {
-    const { dueNow } = isDue(rule, track, studentYear);
-    findings.push(evaluateChoiceRule(rule, context, dueNow, reserved));
+    findings.push(evaluateChoiceRule(rule, context, isDue(rule, track, studentYear)));
   }
 
   return findings;
 }
 
-function evaluateStructuralRule(rule: PlanRule, context: RuleEvalContext, dueNow: boolean): RuleFinding | null {
-  const { catalog, track, covered, planEffective, planAll, groupByPlanCode } = context;
-  const base = { ruleId: rule.id, label: rule.label, source: rule.source, provenance: rule.provenance, dueNow };
+function evaluateStructuralRule(
+  rule: PlanRule,
+  context: RuleEvalContext,
+  applicability: Applicability
+): RuleFinding | null {
+  const { catalog, covered, planEffective, planAll, groupByPlanCode } = context;
+  const base = {
+    ruleId: rule.id,
+    label: rule.label,
+    source: rule.source,
+    provenance: rule.provenance,
+    dueNow: applicability.dueNow,
+    dueByYear: applicability.dueByYear,
+  };
 
   switch (rule.kind) {
     case "required_all": {
@@ -236,22 +356,12 @@ function evaluateStructuralRule(rule: PlanRule, context: RuleEvalContext, dueNow
       });
     }
 
-    case "recovery_required": {
-      const missing = rule.codes.filter((code) => !covered.has(code));
-      const cfu = missing.reduce((total, code) => total + courseCfu(catalog, code), 0);
-      return finding({
-        ...base,
-        satisfied: missing.length === 0,
-        missing, reserved: [],
-        detail: missing.length === 0
-          ? ""
-          : `Il percorso ${track} richiede ${names(catalog, missing)}: se non l'hai già verbalizzato va inserito come recupero. Quei ${cfu} CFU contano dentro il gruppo a scelta.`,
-      });
-    }
+    case "recovery_required":
+      return evaluateConditionalChoiceRule(rule, context, applicability);
 
     case "linked_modules": {
       // L'associazione corso → modulo è attestata solo nei contesti indicati dal Manifesto.
-      // Fuori da quelli (tipicamente un recupero TABREC) diventa una verifica, non un obbligo.
+      // Fuori da quelli (tipicamente una scelta nella tabella dei recuperi) diventa una verifica.
       const attestedMissing: string[] = [];
       const uncertain: { module: string; parent: string; note?: string }[] = [];
       const orphans: string[] = [];
@@ -273,26 +383,26 @@ function evaluateStructuralRule(rule: PlanRule, context: RuleEvalContext, dueNow
         return finding({
           ...base,
           provenance: "operational_to_verify",
-          source: `${rule.source}; contesto di recupero non attestato`,
+          source: `${rule.source}; contesto della tabella di recupero non attestato`,
           satisfied: false,
           missing: [],
           reserved: [],
           severityHint: "warning",
-          detail: `${courseName(catalog, first.parent)} è nel piano come recupero e il Manifesto non associa il modulo "${courseName(catalog, first.module)}" a quel contesto. ${first.note ?? ""} Verifica sui Servizi Online se il modulo va reinserito.`.trim(),
+          detail: `${courseName(catalog, first.parent)} è nel piano come scelta della tabella di recupero e il Regolamento non associa il modulo "${courseName(catalog, first.module)}" a quel contesto. ${first.note ?? ""} Verifica sui Servizi Online se il modulo va inserito.`.trim(),
         });
       }
 
       const parts: string[] = [];
       if (attestedMissing.length) parts.push(`Aggiungi il modulo di prova finale collegato: ${names(catalog, attestedMissing)}.`);
       if (orphans.length) parts.push(`Questi moduli di prova finale non hanno il corso collegato nel piano: ${names(catalog, orphans)}.`);
-      if (uncertain.length) parts.push(`Da verificare sui Servizi Online: ${names(catalog, uncertain.map((item) => item.module))} per i corsi recuperati.`);
+      if (uncertain.length) parts.push(`Da verificare sui Servizi Online: ${names(catalog, uncertain.map((item) => item.module))} per i corsi scelti nella tabella di recupero.`);
 
       return finding({
         ...base,
         satisfied: attestedMissing.length === 0 && orphans.length === 0 && uncertain.length === 0,
         missing: attestedMissing,
         reserved: [],
-        severityHint: attestedMissing.length || orphans.length ? (dueNow ? "blocking" : "advice") : "warning",
+        severityHint: attestedMissing.length || orphans.length ? "blocking" : "warning",
         detail: parts.join(" "),
       });
     }
@@ -321,38 +431,150 @@ function evaluateStructuralRule(rule: PlanRule, context: RuleEvalContext, dueNow
 }
 
 /**
- * Gruppo a scelta. Il totale esatto è attestato dal Manifesto, ma **quando** va raggiunto non lo è:
+ * Scelta obbligata condizionata: «se non scelto al secondo anno deve essere scelto al terzo».
+ *
+ * La regola distingue esplicitamente i due stati, perché portano a decisioni opposte:
+ * un reinserimento non consuma i CFU del gruppo a scelta, una scelta nella tabella di recupero sì.
+ * Lo stato arriva già classificato dal contesto: qui si formula solo la spiegazione.
+ */
+function evaluateConditionalChoiceRule(
+  rule: Extract<PlanRule, { kind: "recovery_required" }>,
+  context: RuleEvalContext,
+  applicability: Applicability
+): RuleFinding {
+  const { catalog, covered, planAll, structuralChoices } = context;
+  const relevant = structuralChoices.filter((choice) => choice.ruleId === rule.id);
+  const base = {
+    ruleId: rule.id,
+    label: rule.label,
+    source: rule.source,
+    provenance: rule.provenance,
+    dueNow: applicability.dueNow,
+    dueByYear: applicability.dueByYear,
+  };
+
+  const missing: string[] = [];
+  const parts: string[] = [];
+  const reserved: string[] = [];
+  let needsVerification = false;
+
+  for (const choice of relevant) {
+    const inPlan = planAll.has(choice.courseCode) || covered.has(choice.courseCode);
+    const label = `${choice.name} (${choice.cfu} CFU)`;
+
+    switch (choice.state) {
+      case "closed":
+        reserved.push(choice.courseCode);
+        break;
+
+      case "not_due_yet":
+        if (!inPlan) {
+          parts.push(
+            `${label} è obbligatorio per il percorso ${context.track}: se non lo scegli entro l'anno ${choice.dueByYear - 1}, all'anno ${choice.dueByYear} dovrai sceglierlo in ${groupLabel(catalog, choice.recoveryGroup) ?? "tabella di recupero"}, dove occuperà parte dei CFU del gruppo a scelta.`
+          );
+        }
+        break;
+
+      case "reinsert_past_frequency":
+        if (inPlan) {
+          reserved.push(choice.courseCode);
+        } else {
+          missing.push(choice.courseCode);
+          parts.push(
+            `${label} era già nel tuo piano di un anno precedente e l'esame non è ancora verbalizzato: va reinserito così com'era, nel blocco in cui l'avevi scelto${choice.pastGroup ? ` (${groupLabel(catalog, choice.pastGroup)})` : ""}. Non è una nuova scelta e non occupa i CFU del gruppo a scelta.`
+          );
+        }
+        break;
+
+      case "choose_in_recovery_table":
+        // Nessuna prenotazione: questi CFU devono restare visibili al gruppo a scelta,
+        // che è esattamente dove il Regolamento li colloca.
+        if (!inPlan) {
+          missing.push(choice.courseCode);
+          parts.push(
+            `${label} non risulta scelto negli anni precedenti: il Regolamento chiede di sceglierlo ora in ${groupLabel(catalog, choice.recoveryGroup) ?? "tabella di recupero"}. È una nuova frequenza e i suoi ${choice.cfu} CFU contano dentro il gruppo a scelta.`
+          );
+        }
+        if (choice.inferredFromMissingHistory) needsVerification = true;
+        break;
+    }
+  }
+
+  if (needsVerification) {
+    parts.push(
+      "Non ho piani degli anni precedenti in archivio, quindi \"non scelto\" è una deduzione: se in realtà l'avevi già inserito, registra quel piano oppure segna l'esito dell'esame in carriera."
+    );
+  }
+
+  const satisfied = missing.length === 0 && parts.length === 0;
+  return finding({
+    ...base,
+    satisfied,
+    missing,
+    reserved,
+    severityHint: needsVerification ? "warning" : "blocking",
+    provenance: needsVerification ? "operational_to_verify" : rule.provenance,
+    detail: parts.join(" "),
+  });
+}
+
+/**
+ * Gruppo a scelta. Il totale esatto è attestato dal Regolamento, ma **quando** va raggiunto no:
  * le tabelle contengono insegnamenti del secondo semestre, che la finestra di modifica semestrale
- * permette di aggiungere. Un ammanco colmabile con corsi del secondo semestre è quindi un avviso
- * operativo, non un errore bloccante.
+ * permette di aggiungere. Un ammanco colmabile con quelli è quindi un avviso operativo, non un
+ * errore bloccante.
+ *
+ * Il conteggio segue l'invariante 2: si contano solo le attività il cui **contesto di scelta**
+ * appartiene alle tabelle del gruppo. Un'attività coperta in un blocco obbligatorio del secondo
+ * anno non entra qui, nemmeno se lo stesso codice compare anche in una tabella del terzo anno.
  */
 function evaluateChoiceRule(
   rule: Extract<PlanRule, { kind: "choice_cfu" }>,
   context: RuleEvalContext,
-  dueNow: boolean,
-  reserved: Set<string>
+  applicability: Applicability
 ): RuleFinding {
-  const { catalog, track, covered, externalChoiceCfu, validationMode } = context;
+  const { catalog, track, covered, coverageGroup, externalChoiceCfu, validationMode } = context;
   const counted: string[] = [];
   let cfu = 0;
   for (const code of covered) {
-    if (reserved.has(code) || !findCourse(catalog, code)) continue;
-    const groups = courseGroupsForTrack(catalog, code, track);
-    if (!groups.some((group) => rule.groups.includes(group))) continue;
+    if (!findCourse(catalog, code)) continue;
+    const group = coverageGroup.get(code) ?? null;
+    if (group === null || !rule.groups.includes(group)) continue;
     counted.push(code);
     cfu += courseCfu(catalog, code);
   }
   if (rule.countsExternal) cfu += externalChoiceCfu;
 
-  const base = { ruleId: rule.id, label: rule.label, source: rule.source, provenance: rule.provenance, dueNow, reserved: counted, missing: [] as string[] };
+  const base = {
+    ruleId: rule.id,
+    label: rule.label,
+    source: rule.source,
+    provenance: rule.provenance,
+    dueNow: applicability.dueNow,
+    dueByYear: applicability.dueByYear,
+    reserved: counted,
+    missing: [] as string[],
+  };
   const shortfall = rule.requiredCfu - cfu;
+  const tables = groupLabelList(catalog, rule.groups);
 
   if (shortfall === 0) return finding({ ...base, satisfied: true, detail: "" });
+
+  // Fuori dall'anno di esigibilità il gruppo non è un ammanco: è il quadro dell'anno che verrà.
+  if (!applicability.dueNow) {
+    return finding({
+      ...base,
+      satisfied: false,
+      detail: shortfall > 0
+        ? `All'anno ${applicability.dueByYear} dovrai comporre ${rule.requiredCfu} CFU scegliendo da: ${tables}. Al momento ne risultano ${cfu}.`
+        : `Le tabelle del gruppo da ${rule.requiredCfu} CFU (${tables}) risultano già oltre il totale di ${-shortfall} CFU: quando arriverai all'anno ${applicability.dueByYear} l'eccedenza andrà in soprannumero.`,
+    });
+  }
 
   if (shortfall < 0) {
     return finding({
       ...base, satisfied: false,
-      detail: `Le tabelle ${rule.groups.join(", ")} devono totalizzare esattamente ${rule.requiredCfu} CFU: ce ne sono ${-shortfall} in più. I CFU eccedenti vanno messi in soprannumero.`,
+      detail: `Il gruppo a scelta deve totalizzare esattamente ${rule.requiredCfu} CFU scegliendo da ${tables}: ce ne sono ${-shortfall} in più. I CFU eccedenti vanno messi in soprannumero.`,
     });
   }
 
@@ -362,7 +584,7 @@ function evaluateChoiceRule(
   if (!canFinishLater) {
     return finding({
       ...base, satisfied: false,
-      detail: `Mancano ${shortfall} CFU al gruppo da ${rule.requiredCfu} CFU (${rule.groups.join(", ")}) e non sono colmabili con insegnamenti del secondo semestre: vanno inseriti in questa presentazione.`,
+      detail: `Mancano ${shortfall} CFU al gruppo da ${rule.requiredCfu} CFU (${tables}) e non sono colmabili con insegnamenti del secondo semestre: vanno inseriti in questa presentazione.`,
     });
   }
 
@@ -375,6 +597,6 @@ function evaluateChoiceRule(
     source: `${rule.source}; §2.4 – la modifica del secondo semestre consente di aggiungere insegnamenti del 2° semestre. Finestre e scadenze da verificare sui Servizi Online`,
     detail: lastWindow
       ? `Mancano ${shortfall} CFU al gruppo da ${rule.requiredCfu} CFU. Sei nella finestra di modifica del secondo semestre: puoi completarlo ora con insegnamenti del 2° semestre, ma è l'ultima occasione utile.`
-      : `Mancano ${shortfall} CFU al gruppo da ${rule.requiredCfu} CFU. Non è un errore: puoi completarlo adesso oppure nella finestra di modifica del secondo semestre, aggiungendo insegnamenti del 2° semestre delle tabelle ${rule.groups.join(", ")}.`,
+      : `Mancano ${shortfall} CFU al gruppo da ${rule.requiredCfu} CFU. Non è un errore: puoi completarlo adesso oppure nella finestra di modifica del secondo semestre, aggiungendo insegnamenti del 2° semestre da ${tables}.`,
   });
 }

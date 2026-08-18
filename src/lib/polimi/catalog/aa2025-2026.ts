@@ -30,7 +30,7 @@ export const COURSES_2025_2026: Course[] = [
   {
     code: "085903", name: "Logica e Algebra", year: 2, semester: 1, cfu: 5, type: ["C"], isElective: true, electiveGroup: "TABREC",
     track: "I3I", isCompulsory: false, alternativeTo: null, linkedExams: [], isSoprannumero: false,
-    description: "Blocco B1 al secondo anno; obbligatorio per I3I, recuperabile al terzo anno con TABREC.",
+    description: "Obbligatorio per I3I. Se non lo scegli al secondo anno lo scegli al terzo nella tabella dei recuperi.",
     offerings: [
       { year: 2, semester: 1, tracks: ["I3I", "I3C"], group: "B1", compulsory: false, category: "C", language: "IT" },
       { year: 3, semester: 1, tracks: ["I3I"], group: "TABREC", compulsory: false, category: "D", language: "IT" },
@@ -39,7 +39,7 @@ export const COURSES_2025_2026: Course[] = [
   {
     code: "093506", name: "Elettromagnetismo e Campi", year: 2, semester: 1, cfu: 10, type: ["B"], isElective: true, electiveGroup: "B1",
     track: null, isCompulsory: false, alternativeTo: null, linkedExams: [], isSoprannumero: false,
-    description: "Alternativa B del blocco B1; consigliata per chi sceglierà I3C.",
+    description: "Alternativa da 10 CFU al blocco Logica e Algebra + tabella di area di base; consigliata per chi sceglierà I3C.",
     offerings: [{ year: 2, semester: 1, tracks: ["I3I", "I3C"], group: "B1", compulsory: false, category: "B", language: "IT" }],
   },
   {
@@ -50,9 +50,9 @@ export const COURSES_2025_2026: Course[] = [
       { year: 3, semester: 1, tracks: ["I3C"], group: "TABGEN", compulsory: false, category: "D", language: "IT" },
     ],
   },
-  { code: "058081", name: "Fisica Tecnica", year: 2, semester: 1, cfu: 5, type: ["C"], isElective: true, electiveGroup: "TABA", track: null, isCompulsory: false, alternativeTo: null, linkedExams: [], isSoprannumero: false, description: "Numero chiuso." },
-  { code: "058083", name: "Misure", year: 2, semester: 1, cfu: 5, type: ["B"], isElective: true, electiveGroup: "TABA", track: null, isCompulsory: false, alternativeTo: null, linkedExams: [], isSoprannumero: false, description: "Numero chiuso." },
-  { code: "058084", name: "Onde Elettromagnetiche e Mezzi Trasmissivi", year: 2, semester: 1, cfu: 5, type: ["B"], isElective: true, electiveGroup: "TABA", track: null, isCompulsory: false, alternativeTo: null, linkedExams: [], isSoprannumero: false, description: "Numero chiuso." },
+  { code: "058081", name: "Fisica Tecnica", year: 2, semester: 1, cfu: 5, type: ["C"], isElective: true, electiveGroup: "TABA", track: null, isCompulsory: false, alternativeTo: null, linkedExams: [], isSoprannumero: false, enrolmentCapped: true },
+  { code: "058083", name: "Misure", year: 2, semester: 1, cfu: 5, type: ["B"], isElective: true, electiveGroup: "TABA", track: null, isCompulsory: false, alternativeTo: null, linkedExams: [], isSoprannumero: false, enrolmentCapped: true },
+  { code: "058084", name: "Onde Elettromagnetiche e Mezzi Trasmissivi", year: 2, semester: 1, cfu: 5, type: ["B"], isElective: true, electiveGroup: "TABA", track: null, isCompulsory: false, alternativeTo: null, linkedExams: [], isSoprannumero: false },
 
   // ---------------------------------------------------------------- ANNO 2 – blocco B2
   { code: "099319", name: "Probabilità e Statistica per l'Informatica", year: 2, semester: 2, cfu: 10, type: ["A"], isElective: true, electiveGroup: "PROBSTAT", track: null, isCompulsory: false, alternativeTo: "054304", linkedExams: [], isSoprannumero: false, description: "Alternativo a Informazione e Stima." },
@@ -62,17 +62,17 @@ export const COURSES_2025_2026: Course[] = [
   {
     code: "086067", name: "Algoritmi e Principi dell'Informatica", year: 2, semester: 2, cfu: 10, type: ["A", "B"], isElective: true, electiveGroup: "TABREC",
     track: "I3I", isCompulsory: false, alternativeTo: null, isSoprannumero: false,
-    linkedExams: [{ code: "052509", name: "Prova Finale (Progetto Algoritmi e Strutture Dati)", cfu: 1, type: ["V"] }],
-    description: "Obbligatorio per I3I. Se non scelto al 2° anno va recuperato al 3° tramite TABREC.",
+    linkedExams: [{ code: "052509", name: "Prova Finale (Progetto di Algoritmi e Strutture Dati)", cfu: 1, type: ["V"] }],
+    description: "Obbligatorio per I3I. Se non lo scegli al secondo anno lo scegli al terzo nella tabella dei recuperi.",
     offerings: [
       { year: 2, semester: 2, tracks: ["I3I", "I3C"], group: "B3", compulsory: false, category: "B", linkedModules: ["052509"], language: "IT" },
       { year: 3, semester: 2, tracks: ["I3I"], group: "TABREC", compulsory: false, category: "D", linkedModules: ["052509"], language: "IT" },
     ],
   },
   {
-    code: "052509", name: "Prova Finale (Progetto Algoritmi e Strutture Dati)", year: 2, semester: 2, cfu: 1, type: ["V"], isElective: false, electiveGroup: null,
+    code: "052509", name: "Prova Finale (Progetto di Algoritmi e Strutture Dati)", year: 2, semester: 2, cfu: 1, type: ["V"], isElective: false, electiveGroup: null,
     track: "I3I", isCompulsory: false, alternativeTo: null, linkedExams: [], isSoprannumero: false, isLinkedExam: true, parentCode: "086067",
-    description: "Il Manifesto lo associa ad Algoritmi nel blocco B3 del secondo anno. La tabella TABREC del terzo anno elenca Algoritmi per 10 CFU senza il modulo: in caso di recupero va verificato sui Servizi Online.",
+    description: "Il Regolamento lo associa ad Algoritmi dentro il blocco da 11 CFU del secondo anno. La tabella dei recuperi del terzo anno elenca Algoritmi per 10 CFU senza il modulo: in quel caso va verificato sui Servizi Online.",
     offerings: [
       { year: 2, semester: 2, tracks: ["I3I", "I3C"], group: "B3", compulsory: false, category: "V" },
     ],
@@ -80,8 +80,8 @@ export const COURSES_2025_2026: Course[] = [
   {
     code: "099322", name: "Segnali per le Comunicazioni", year: 2, semester: 2, cfu: 10, type: ["B"], isElective: true, electiveGroup: "TABTLC",
     track: "both", isCompulsory: false, alternativeTo: null, isSoprannumero: false,
-    linkedExams: [{ code: "054440", name: "Prova Finale (Progetto Segnali per le Comunicazioni)", cfu: 1, type: ["V"] }],
-    description: "Obbligatorio per I3C. Se non scelto al 2° anno va recuperato al 3° tramite TABCOM.",
+    linkedExams: [{ code: "054440", name: "Prova Finale (Progetto di Segnali per le Comunicazioni)", cfu: 1, type: ["V"] }],
+    description: "Obbligatorio per I3C. Se non lo scegli al secondo anno lo scegli al terzo nella tabella di comunicazioni.",
     offerings: [
       { year: 2, semester: 2, tracks: ["I3C", "I3I"], group: "B3", compulsory: false, category: "B", linkedModules: ["054440"], language: "IT" },
       { year: 3, semester: 2, tracks: ["I3I"], group: "TABTLC", compulsory: false, category: "D", language: "IT" },
@@ -89,7 +89,7 @@ export const COURSES_2025_2026: Course[] = [
     ],
   },
   {
-    code: "054440", name: "Prova Finale (Progetto Segnali per le Comunicazioni)", year: 2, semester: 2, cfu: 1, type: ["V"], isElective: false, electiveGroup: null,
+    code: "054440", name: "Prova Finale (Progetto di Segnali per le Comunicazioni)", year: 2, semester: 2, cfu: 1, type: ["V"], isElective: false, electiveGroup: null,
     track: "both", isCompulsory: false, alternativeTo: null, linkedExams: [], isSoprannumero: false, isLinkedExam: true, parentCode: "099322",
     offerings: [{ year: 2, semester: 2, tracks: ["I3I", "I3C"], group: "B3", compulsory: false, category: "V" }],
   },
@@ -113,19 +113,19 @@ export const COURSES_2025_2026: Course[] = [
   },
 
   // ANNO 3 – I3I bundle lingua (tutto italiano oppure tutto inglese)
-  { code: "052511", name: "Sistemi Informativi (per il Settore dell'Informazione)", year: 3, semester: 1, cfu: 5, type: ["B"], isElective: false, electiveGroup: "I3I-LANG-IT", track: "I3I", isCompulsory: false, alternativeTo: "063149", linkedExams: [], isSoprannumero: false, description: "Bundle italiano di Sistemi Informativi, Basi di Dati ed Economia." },
-  { code: "085887", name: "Basi di Dati 1", year: 3, semester: 1, cfu: 5, type: ["B"], isElective: false, electiveGroup: "I3I-LANG-IT", track: "I3I", isCompulsory: false, alternativeTo: "063579", linkedExams: [], isSoprannumero: false, description: "Bundle italiano." },
+  { code: "052511", name: "Sistemi Informativi (per il Settore dell'Informazione)", year: 3, semester: 1, cfu: 5, type: ["B"], isElective: false, electiveGroup: "I3I-LANG-IT", track: "I3I", isCompulsory: false, alternativeTo: "063149", linkedExams: [], isSoprannumero: false, description: "Blocco da 18 CFU in italiano: Sistemi Informativi, Basi di Dati 1 ed Economia." },
+  { code: "085887", name: "Basi di Dati 1", year: 3, semester: 1, cfu: 5, type: ["B"], isElective: false, electiveGroup: "I3I-LANG-IT", track: "I3I", isCompulsory: false, alternativeTo: "063579", linkedExams: [], isSoprannumero: false, description: "Blocco da 18 CFU in italiano." },
   {
     code: "051289", name: "Economia e Organizzazione Aziendale", year: 3, semester: 2, cfu: 8, type: ["C"], isElective: false, electiveGroup: null, track: "both", isCompulsory: false, alternativeTo: "063150", linkedExams: [], isSoprannumero: false,
-    description: "Bundle italiano per I3I; obbligatorio per I3C.",
+    description: "Per I3I fa parte del blocco da 18 CFU in italiano; per I3C è obbligatorio.",
     offerings: [
       { year: 3, semester: 2, tracks: ["I3I"], group: "I3I-LANG-IT", compulsory: false, category: "C", language: "IT" },
       { year: 3, semester: 2, tracks: ["I3C"], group: null, compulsory: true, category: "C", language: "IT" },
     ],
   },
-  { code: "063149", name: "Information Systems", year: 3, semester: 1, cfu: 5, type: ["B"], isElective: false, electiveGroup: "I3I-LANG-EN", track: "I3I", isCompulsory: false, alternativeTo: "052511", linkedExams: [], isSoprannumero: false, description: "Bundle inglese, numero chiuso: la disponibilità posti non è verificabile offline." },
-  { code: "063579", name: "Databases", year: 3, semester: 1, cfu: 5, type: ["B"], isElective: false, electiveGroup: "I3I-LANG-EN", track: "I3I", isCompulsory: false, alternativeTo: "085887", linkedExams: [], isSoprannumero: false, description: "Bundle inglese, numero chiuso." },
-  { code: "063150", name: "Economics & Business Administration", year: 3, semester: 2, cfu: 8, type: ["C"], isElective: false, electiveGroup: "I3I-LANG-EN", track: "I3I", isCompulsory: false, alternativeTo: "051289", linkedExams: [], isSoprannumero: false, description: "Bundle inglese, numero chiuso." },
+  { code: "063149", name: "Information Systems", year: 3, semester: 1, cfu: 5, type: ["B"], isElective: false, electiveGroup: "I3I-LANG-EN", track: "I3I", isCompulsory: false, alternativeTo: "052511", linkedExams: [], isSoprannumero: false, enrolmentCapped: true, description: "Blocco in inglese: la disponibilità posti non è verificabile offline." },
+  { code: "063579", name: "Databases", year: 3, semester: 1, cfu: 5, type: ["B"], isElective: false, electiveGroup: "I3I-LANG-EN", track: "I3I", isCompulsory: false, alternativeTo: "085887", linkedExams: [], isSoprannumero: false, enrolmentCapped: true, description: "Blocco in inglese." },
+  { code: "063150", name: "Economics & Business Administration", year: 3, semester: 2, cfu: 8, type: ["C"], isElective: false, electiveGroup: "I3I-LANG-EN", track: "I3I", isCompulsory: false, alternativeTo: "051289", linkedExams: [], isSoprannumero: false, enrolmentCapped: true, description: "Blocco in inglese." },
 
   // ANNO 3 – I3I – TABAUT
   { code: "088877", name: "Teoria dei Sistemi (Dinamica Non Lineare)", year: 3, semester: 1, cfu: 5, type: ["B"], isElective: true, electiveGroup: "TABAUT", track: "I3I", isCompulsory: false, alternativeTo: null, linkedExams: [], isSoprannumero: false },
@@ -208,20 +208,25 @@ export const COURSES_2025_2026: Course[] = [
   { code: "088850", name: "Fisica Tecnica (I3C)", year: 3, semester: 2, cfu: 5, type: ["C"], isElective: true, electiveGroup: "TABGEN", track: "I3C", isCompulsory: false, alternativeTo: null, linkedExams: [], isSoprannumero: false },
 ];
 
+/**
+ * Le `label` sono i nomi che la UI mostra: la sigla del Manifesto resta tra parentesi perché
+ * serve per ritrovare la tabella sui Servizi Online, ma non compare mai da sola.
+ */
 const ELECTIVE_GROUPS_2025_2026: Record<string, ElectiveGroup> = {
-  B1: { label: "Blocco B1", description: "10 CFU: Logica e Algebra + un corso TABA, oppure Elettromagnetismo e Campi", maxPicks: null, minPicks: null, tracks: null },
-  TABA: { label: "TABA", description: "Esattamente 1 corso da 5 CFU, insieme a Logica e Algebra", maxPicks: 1, minPicks: 1, tracks: null },
-  PROBSTAT: { label: "Blocco B2", description: "Esattamente uno tra Probabilità e Statistica e Informazione e Stima", maxPicks: 1, minPicks: 1, tracks: null },
-  TABREC: { label: "TABREC", description: "Recuperi obbligatori per I3I se non già acquisiti", maxPicks: null, minPicks: null, tracks: ["I3I"] },
-  TABAUT: { label: "TABAUT", description: "Tabella automatica, dentro i 15 CFU a scelta", maxPicks: null, minPicks: 0, tracks: ["I3I"] },
-  TABINF: { label: "TABINF", description: "Tabella informatica, dentro i 15 CFU a scelta", maxPicks: null, minPicks: 0, tracks: ["I3I"] },
-  TABING: { label: "TABING", description: "Tabella affini ingegneristiche, dentro i 15 CFU a scelta", maxPicks: null, minPicks: 0, tracks: ["I3I"] },
-  TABTLC: { label: "TABTLC", description: "Tabella telecomunicazioni, dentro i 15 CFU a scelta", maxPicks: null, minPicks: 0, tracks: ["I3I"] },
-  TABCOM: { label: "TABCOM", description: "Tabella comunicazioni, dentro i 15 CFU a scelta", maxPicks: null, minPicks: 0, tracks: ["I3C"] },
-  TABGEN: { label: "TABGEN", description: "Tabella generali/affini, dentro i 15 CFU a scelta", maxPicks: null, minPicks: 0, tracks: ["I3C"] },
-  TIROCINIO: { label: "Tirocinio", description: "Tirocinio facoltativo da 5 o 10 CFU, una sola istanza", maxPicks: 1, minPicks: 0, tracks: null },
-  "I3I-LANG-IT": { label: "Bundle italiano", description: "Sistemi Informativi + Basi di Dati 1 + Economia", maxPicks: null, minPicks: null, tracks: ["I3I"] },
-  "I3I-LANG-EN": { label: "Bundle inglese", description: "Information Systems + Databases + Economics (numero chiuso)", maxPicks: null, minPicks: null, tracks: ["I3I"] },
+  B1: { label: "Blocco del 2° anno da 10 CFU (B1)", description: "10 CFU: Logica e Algebra più un corso della tabella di area di base, oppure Elettromagnetismo e Campi", maxPicks: null, minPicks: null, tracks: null },
+  TABA: { label: "Tabella di area di base del 2° anno (TABA)", description: "Esattamente 1 corso da 5 CFU, insieme a Logica e Algebra", maxPicks: 1, minPicks: 1, tracks: null },
+  PROBSTAT: { label: "Blocco del 2° anno da 10 CFU (B2)", description: "Esattamente uno tra Probabilità e Statistica e Informazione e Stima", maxPicks: 1, minPicks: 1, tracks: null },
+  B3: { label: "Blocco progettuale del 2° anno da 11 CFU (B3)", description: "Un insegnamento da 10 CFU con il modulo di prova finale collegato da 1 CFU", maxPicks: null, minPicks: null, tracks: null },
+  TABREC: { label: "Tabella dei recuperi obbligatori (TABREC)", description: "Logica e Algebra e Algoritmi e Principi dell'Informatica, se non scelti al 2° anno, si scelgono qui al 3°", maxPicks: null, minPicks: null, tracks: ["I3I"] },
+  TABAUT: { label: "Tabella di automatica (TABAUT)", description: "Insegnamenti a scelta dentro il gruppo da 15 CFU del 3° anno", maxPicks: null, minPicks: 0, tracks: ["I3I"] },
+  TABINF: { label: "Tabella di informatica (TABINF)", description: "Insegnamenti a scelta dentro il gruppo da 15 CFU del 3° anno", maxPicks: null, minPicks: 0, tracks: ["I3I"] },
+  TABING: { label: "Tabella di ingegneria affine (TABING)", description: "Insegnamenti a scelta dentro il gruppo da 15 CFU del 3° anno", maxPicks: null, minPicks: 0, tracks: ["I3I"] },
+  TABTLC: { label: "Tabella di telecomunicazioni (TABTLC)", description: "Insegnamenti a scelta dentro il gruppo da 15 CFU del 3° anno", maxPicks: null, minPicks: 0, tracks: ["I3I"] },
+  TABCOM: { label: "Tabella di comunicazioni (TABCOM)", description: "Insegnamenti a scelta dentro il gruppo da 15 CFU del 3° anno", maxPicks: null, minPicks: 0, tracks: ["I3C"] },
+  TABGEN: { label: "Tabella di area generale (TABGEN)", description: "Insegnamenti a scelta dentro il gruppo da 15 CFU del 3° anno", maxPicks: null, minPicks: 0, tracks: ["I3C"] },
+  TIROCINIO: { label: "Tirocinio facoltativo", description: "Tirocinio da 5 o 10 CFU dentro le attività a scelta: una sola istanza", maxPicks: 1, minPicks: 0, tracks: null },
+  "I3I-LANG-IT": { label: "Blocco da 18 CFU in italiano", description: "Sistemi Informativi, Basi di Dati 1 ed Economia e Organizzazione Aziendale", maxPicks: null, minPicks: null, tracks: ["I3I"] },
+  "I3I-LANG-EN": { label: "Blocco da 18 CFU in inglese", description: "Information Systems, Databases ed Economics & Business Administration: tutti e tre a numero chiuso", maxPicks: null, minPicks: null, tracks: ["I3I"] },
 };
 
 const RULES_2025_2026: PlanRule[] = [
@@ -238,28 +243,28 @@ const RULES_2025_2026: PlanRule[] = [
     source: "§6.2.1 – IT1 anno 2, corsi fissi",
   },
   {
-    kind: "alternatives", id: "it1_year2_b1", label: "Anno 2 IT1 – blocco B1 (10 CFU)", dueByYear: 2,
+    kind: "alternatives", id: "it1_year2_b1", label: "Anno 2 IT1 – blocco da 10 CFU", dueByYear: 2,
     options: [
-      { id: "b1_logica_taba", label: "Logica e Algebra + un corso TABA", requireAll: ["085903"], pickOneOf: { codes: TABA_CODES, count: 1 } },
+      { id: "b1_logica_taba", label: "Logica e Algebra più un corso della tabella di area di base", requireAll: ["085903"], pickOneOf: { codes: TABA_CODES, count: 1 } },
       { id: "b1_campi", label: "Elettromagnetismo e Campi", requireAll: ["093506"] },
     ],
     provenance: "operational_to_verify",
-    source: "§6.2.2 / §13.1 – blocco IT1-2Y-B1, ricostruzione dal Manifesto HTML da confrontare con l'export ufficiale",
+    source: "§6.2.2 / §13.1 – il totale di 10 CFU è attestato; la composizione delle alternative è dedotta dal raggruppamento del Manifesto HTML e va confrontata con l'export ufficiale",
   },
   {
-    kind: "exactly_one", id: "it1_year2_b2", label: "Anno 2 IT1 – blocco B2 (10 CFU)", dueByYear: 2,
+    kind: "exactly_one", id: "it1_year2_b2", label: "Anno 2 IT1 – blocco da 10 CFU tra probabilità e stima", dueByYear: 2,
     codes: ["099319", "054304"],
     provenance: "manifesto",
     source: "§6.2.3 – blocco IT1-2Y-B2, esattamente uno tra i due",
   },
   {
-    kind: "bundle_exactly_one", id: "it1_year2_b3", label: "Anno 2 IT1 – blocco B3 (11 CFU)", dueByYear: 2,
+    kind: "bundle_exactly_one", id: "it1_year2_b3", label: "Anno 2 IT1 – blocco progettuale da 11 CFU", dueByYear: 2,
     bundles: [
-      { id: "b3_informatica", label: "Algoritmi e Principi dell'Informatica + progetto", codes: ["086067", "052509"] },
-      { id: "b3_comunicazioni", label: "Segnali per le Comunicazioni + progetto", codes: ["099322", "054440"] },
+      { id: "b3_informatica", label: "Algoritmi e Principi dell'Informatica con il progetto collegato", codes: ["086067", "052509"] },
+      { id: "b3_comunicazioni", label: "Segnali per le Comunicazioni con il progetto collegato", codes: ["099322", "054440"] },
     ],
     provenance: "operational_to_verify",
-    source: "§6.2.4 / §13.1 – blocco IT1-2Y-B3, ricostruzione dal Manifesto HTML da confrontare con l'export ufficiale",
+    source: "§6.2.4 / §13.1 – il totale di 11 CFU è attestato; che le due coppie corso + progetto siano alternative è dedotto dal raggruppamento del Manifesto HTML",
   },
   {
     kind: "required_all", id: "i3i_year3_fixed", label: "Anno 3 I3I – insegnamenti obbligatori", dueByYear: 3, tracks: ["I3I"],
@@ -268,22 +273,24 @@ const RULES_2025_2026: PlanRule[] = [
     source: "§7.1 – I3I corsi fissi e moduli di prova finale",
   },
   {
-    kind: "bundle_exactly_one", id: "i3i_language_bundle", label: "Anno 3 I3I – bundle lingua (18 CFU)", dueByYear: 3, tracks: ["I3I"],
+    kind: "bundle_exactly_one", id: "i3i_language_bundle", label: "Anno 3 I3I – blocco da 18 CFU, italiano o inglese", dueByYear: 3, tracks: ["I3I"],
     bundles: [
-      { id: "lang_it", label: "Bundle italiano", codes: ["052511", "085887", "051289"] },
-      { id: "lang_en", label: "Bundle inglese (numero chiuso)", codes: ["063149", "063579", "063150"] },
+      { id: "lang_it", label: "Blocco in italiano", codes: ["052511", "085887", "051289"] },
+      { id: "lang_en", label: "Blocco in inglese (numero chiuso)", codes: ["063149", "063579", "063150"] },
     ],
     provenance: "manifesto",
-    source: "§7.2 – bundle lingua I3I: combinazioni miste italiano/inglese non ammesse",
+    source: "§7.2 – la selezione di uno dei corsi in lingua inglese implica che anche gli altri due siano in inglese: combinazioni miste non ammesse",
   },
   {
-    kind: "recovery_required", id: "i3i_recovery", label: "Anno 3 I3I – recuperi TABREC", dueByYear: 3, tracks: ["I3I"],
+    kind: "recovery_required", id: "i3i_recovery", label: "Anno 3 I3I – insegnamenti obbligatori da scegliere in TABREC", dueByYear: 3, tracks: ["I3I"],
     codes: ["085903", "086067"],
+    // Sceglierli nella tabella dei recuperi assolve i blocchi del secondo anno che li contenevano.
+    dischargesRuleIds: ["it1_year2_b1", "it1_year2_b3"],
     provenance: "manifesto",
-    source: "§6.2.5 / §7.3 – per I3I, Logica e Algebra (5 CFU) e Algoritmi e Principi dell'Informatica (10 CFU) sono obbligatori: se non acquisiti al secondo anno vanno inseriti in TABREC, dentro il gruppo da 15 CFU",
+    source: "Note al 2° anno – Logica e Algebra e Algoritmi e Principi dell'Informatica sono obbligatori per I3I: «se non scelto al secondo anno deve essere scelto al terzo anno (TABREC)»",
   },
   {
-    kind: "choice_cfu", id: "i3i_choice_15", label: "Anno 3 I3I – gruppo da 15 CFU", dueByYear: 3, tracks: ["I3I"],
+    kind: "choice_cfu", id: "i3i_choice_15", label: "Anno 3 I3I – gruppo da 15 CFU a scelta", dueByYear: 3, tracks: ["I3I"],
     groups: ["TABREC", "TABAUT", "TABINF", "TABING", "TABTLC", "TIROCINIO"],
     requiredCfu: 15, countsExternal: true, completableInSecondSemesterWindow: true,
     provenance: "manifesto",
@@ -296,13 +303,14 @@ const RULES_2025_2026: PlanRule[] = [
     source: "§8.1 – I3C corsi fissi e moduli di prova finale",
   },
   {
-    kind: "recovery_required", id: "i3c_recovery", label: "Anno 3 I3C – recupero Segnali", dueByYear: 3, tracks: ["I3C"],
+    kind: "recovery_required", id: "i3c_recovery", label: "Anno 3 I3C – insegnamento obbligatorio da scegliere in TABCOM", dueByYear: 3, tracks: ["I3C"],
     codes: ["099322"],
+    dischargesRuleIds: ["it1_year2_b3"],
     provenance: "manifesto",
-    source: "§8.2 – per I3C, Segnali per le Comunicazioni (10 CFU) va inserito in TABCOM se non già acquisito, dentro il gruppo da 15 CFU",
+    source: "Note al 2° anno – Segnali per le Comunicazioni è obbligatorio per I3C: «se non scelto al secondo anno deve essere scelto al terzo anno (TABCOM)»",
   },
   {
-    kind: "choice_cfu", id: "i3c_choice_15", label: "Anno 3 I3C – gruppo da 15 CFU", dueByYear: 3, tracks: ["I3C"],
+    kind: "choice_cfu", id: "i3c_choice_15", label: "Anno 3 I3C – gruppo da 15 CFU a scelta", dueByYear: 3, tracks: ["I3C"],
     groups: ["TABCOM", "TABGEN", "TIROCINIO"],
     requiredCfu: 15, countsExternal: true, completableInSecondSemesterWindow: true,
     provenance: "manifesto",
@@ -312,8 +320,8 @@ const RULES_2025_2026: PlanRule[] = [
     kind: "linked_modules", id: "final_exam_modules", label: "Moduli di prova finale collegati",
     pairs: [
       // Associazioni e semestri come nelle tabelle del Manifesto.
-      { parent: "086067", module: "052509", attestedGroups: ["B3"], semester: 2, note: "Nel Manifesto il progetto da 1 CFU è associato ad Algoritmi dentro il blocco B3 del secondo anno. La tabella TABREC del terzo anno elenca Algoritmi per 10 CFU e non riporta il modulo." },
-      { parent: "099322", module: "054440", attestedGroups: ["B3"], semester: 2, note: "Nel Manifesto il progetto da 1 CFU è associato a Segnali dentro il blocco B3 del secondo anno. Le tabelle TABCOM/TABTLC del terzo anno elencano Segnali per 10 CFU e non riportano il modulo." },
+      { parent: "086067", module: "052509", attestedGroups: ["B3"], semester: 2, note: "Nel Regolamento il progetto da 1 CFU è associato ad Algoritmi dentro il blocco da 11 CFU del secondo anno. La tabella dei recuperi del terzo anno elenca Algoritmi per 10 CFU e non riporta il modulo." },
+      { parent: "099322", module: "054440", attestedGroups: ["B3"], semester: 2, note: "Nel Regolamento il progetto da 1 CFU è associato a Segnali dentro il blocco da 11 CFU del secondo anno. Le tabelle di comunicazioni e telecomunicazioni del terzo anno elencano Segnali per 10 CFU e non riportano il modulo." },
       { parent: "085877", module: "054441", attestedGroups: null, semester: 1 },
       { parent: "052510", module: "085923", attestedGroups: null, semester: 2 },
       { parent: "097459", module: "097460", attestedGroups: null, semester: 1 },
@@ -355,12 +363,32 @@ const ANNUAL_RULES_2025_2026: AnnualRules = {
   settledExamStatuses: ["passed_registered", "not_required"],
   secondSemesterRevision: { editableSemester: 2, allowTrackChange: false, allowSelfCertification: false },
   sources: {
-    cfuRange: "§2.1.5 – in presentazione ordinaria il piano può contenere da 30 a 80 CFU per anno",
-    reinsertions: "§2.2.1 – gli esami non superati dei piani precedenti vanno reinseriti prima delle nuove frequenze",
-    contribution: "§2.2.3 – se l'esame è superato al recupero, l'insegnamento esce dalle nuove frequenze e non conta per le tasse",
-    supernumerary: "§2.1.7 / §3.5 – massimo 32 CFU soprannumerari sull'intera durata del corso",
-    externalChoices: "§2.3.1 – scelte autonome ammesse fino a 15 CFU",
-    revision: "§2.4 – modifiche facoltative limitate agli insegnamenti del secondo semestre",
+    // L'intervallo CFU e le finestre non stanno nel Regolamento del corso: vengono dalle norme
+    // di presentazione del piano degli studi, che qui restano da confermare sui Servizi Online.
+    cfuRange: {
+      source: "§2.1.5 – in presentazione ordinaria il piano può contenere da 30 a 80 CFU per anno (norme di presentazione del piano, non Regolamento del corso 531)",
+      provenance: "operational_to_verify",
+    },
+    reinsertions: {
+      source: "§2.2.1 – gli esami non superati dei piani precedenti vanno reinseriti prima delle nuove frequenze",
+      provenance: "operational_to_verify",
+    },
+    contribution: {
+      source: "§2.2.3 – se l'esame è superato al recupero, l'insegnamento esce dalle nuove frequenze e non conta per le tasse",
+      provenance: "operational_to_verify",
+    },
+    supernumerary: {
+      source: "§4.2 del Regolamento 531 – l'inserimento in soprannumero di insegnamenti di Laurea Magistrale è consentito fino a un massimo di 32 CFU",
+      provenance: "manifesto",
+    },
+    externalChoices: {
+      source: "§2.3.1 – scelte autonome fuori dalle tabelle preapprovate ammesse fino a 15 CFU",
+      provenance: "operational_to_verify",
+    },
+    revision: {
+      source: "§2.4 – modifiche facoltative limitate agli insegnamenti del secondo semestre",
+      provenance: "operational_to_verify",
+    },
   },
 };
 
@@ -397,9 +425,13 @@ const AREA_BY_CODE_2025_2026: Record<string, AreaMapping> = {
   "085900": { kind: "base", area: "physics_chemistry" },
 
   "085746": { kind: "characterizing", area: "electronics" },
+  "058083": { kind: "characterizing", area: "electronics" },
   "082746": { kind: "characterizing", area: "computer_engineering" },
   "085779": { kind: "characterizing", area: "computer_engineering" },
   "086067": { kind: "characterizing", area: "computer_engineering" },
+  "085905": { kind: "characterizing", area: "computer_engineering" },
+  "088877": { kind: "characterizing", area: "computer_engineering" },
+  "085901": { kind: "characterizing", area: "computer_engineering" },
   "052511": { kind: "characterizing", area: "computer_engineering" },
   "085887": { kind: "characterizing", area: "computer_engineering" },
   "085877": { kind: "characterizing", area: "computer_engineering" },
@@ -412,7 +444,6 @@ const AREA_BY_CODE_2025_2026: Record<string, AreaMapping> = {
   "054304": { kind: "characterizing", area: "telecommunications" },
   "099322": { kind: "characterizing", area: "telecommunications" },
   "093506": { kind: "characterizing", area: "telecommunications" },
-  "058083": { kind: "characterizing", area: "telecommunications" },
   "058084": { kind: "characterizing", area: "telecommunications" },
   "054305": { kind: "characterizing", area: "telecommunications" },
   "051231": { kind: "characterizing", area: "telecommunications" },
@@ -444,16 +475,26 @@ export const CATALOG_2025_2026: Catalog = {
   academicYear: "2025/2026",
   courseCode: "531",
   dataStatus: "verified_from_manifesto",
+  dataStatusReason:
+    "Corsi, CFU, semestri e tabelle sono trascritti dal Regolamento didattico definitivo AA 2025/2026 del corso 531.",
   dataNotes: [
     "La struttura dei blocchi B1/B2/B3 del secondo anno IT1 è una ricostruzione coerente con il Manifesto HTML: da confrontare con un export ufficiale machine-readable (§13.1).",
-    "La disponibilità di posti dei corsi a numero chiuso (bundle inglese I3I, TABA a numero chiuso) non è verificabile offline (§13.3).",
-    "Fondamenti di Automatica (ING-INF/04) non compare negli ambiti caratterizzanti ministeriali elencati nel Regolamento: il conteggio per area lo esclude.",
-    "Le tabelle di recupero del terzo anno elencano Algoritmi (10 CFU) e Segnali (10 CFU) senza i rispettivi moduli di progetto da 1 CFU: se recuperi quei corsi, verifica sui Servizi Online se il modulo va reinserito.",
-    "Le finestre di presentazione e di modifica del piano non sono nel Manifesto: quando il gruppo da 15 CFU può essere completato è una regola operativa da verificare sui Servizi Online.",
+    "La disponibilità di posti dei corsi a numero chiuso (blocco in inglese del terzo anno I3I, Fisica Tecnica e Misure in TABA) non è verificabile offline (§13.3).",
+    "Gli SSD affini (elettrotecnica, economia, meccanica, fisica tecnica, analisi numerica) non compaiono nelle tabelle ministeriali di base e caratterizzanti: restano fuori dal conteggio per area, che resta una proiezione informativa.",
+    "Le tabelle di recupero del terzo anno elencano Algoritmi (10 CFU) e Segnali (10 CFU) senza i rispettivi moduli di progetto da 1 CFU: se scegli quei corsi al terzo anno, verifica sui Servizi Online se il modulo va inserito.",
+    "Le finestre di presentazione e di modifica del piano non sono nel Regolamento del corso: quando il gruppo da 15 CFU può essere completato è una regola operativa da verificare sui Servizi Online.",
   ],
   sources: [
-    "Manifesto/Regolamento didattico AA 2025/2026, corso 531 (onlineservices.polimi.it)",
-    "polimi_ingegneria_informatica_piano_studi_regole.md",
+    {
+      label: "Regolamento didattico del corso di studi 531, AA 2025/2026",
+      kind: "regolamento_final",
+      url: "https://onlineservices.polimi.it/manifesti/manifesti/controller/extra/RegolamentoPublic.do?EVN_DEFAULT=evento&aa=2025&jaf_currentWFID=main&k_corso_la=531&lang=IT",
+    },
+    {
+      label: "polimi_ingegneria_informatica_piano_studi_regole.md",
+      kind: "internal_extraction",
+      note: "Estrazione di lavoro dei paragrafi citati dalle regole; i riferimenti §x.y puntano a questo documento.",
+    },
   ],
   courses: COURSES_2025_2026,
   electiveGroups: ELECTIVE_GROUPS_2025_2026,

@@ -22,7 +22,7 @@ Next.js 16, React 19, TypeScript, Tailwind CSS 4 e SQLite (`better-sqlite3`). No
 
 Per lo sviluppo locale:
 
-- Node.js 20 o successivo (consigliato Node 22 LTS)
+- Node.js 22 o successivo
 - pnpm 11 o successivo
 - strumenti di compilazione C/C++ solo se `better-sqlite3` non trova un binario precompilato (`python3`, `make`, compilatore C++)
 
@@ -49,7 +49,7 @@ pnpm lint          # controlli ESLint
 pnpm test:polimi   # test dei vincoli del piano di studi
 pnpm build         # build di produzione; deve passare prima del deploy
 pnpm start         # serve la build su http://localhost:3000
-PORT=8333 pnpm start
+PORT=3100 pnpm start
 ```
 
 `pnpm db:seed` e `pnpm db:reset` sono distruttivi: ricreano il database e inseriscono dati demo. Non usarli su un'installazione con dati reali.

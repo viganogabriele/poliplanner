@@ -3,9 +3,24 @@ import path from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import { ensureSchema } from "./schema";
 
+/** Percorso relativo di default: risolto a runtime rispetto alla directory di lavoro. */
+const DEFAULT_DB_RELATIVE_PATH = "db/lesson_tracker.db";
+
+/**
+ * Percorso del file SQLite.
+ *
+ * Due accorgimenti, entrambi per il tracciamento delle dipendenze del build:
+ *
+ * - `path.resolve` su un percorso relativo usa già la directory di lavoro corrente, quindi non
+ *   serve nominare `process.cwd()`;
+ * - il percorso resta comunque dinamico (dipende da una variabile d'ambiente), e di fronte a un
+ *   percorso dinamico Turbopack marcherebbe l'intero progetto come dipendenza del server
+ *   ("Encountered unexpected file in NFT list"). Il commento `turbopackIgnore` dice al tracer
+ *   che questo percorso è un dato di runtime, non un file da includere nel bundle.
+ */
 export function getDatabasePath(): string {
   const configured = process.env.POLIPLANNER_DB_PATH?.trim();
-  return path.resolve(configured || path.join(/* turbopackIgnore: true */ process.cwd(), "db", "lesson_tracker.db"));
+  return path.resolve(/* turbopackIgnore: true */ configured || DEFAULT_DB_RELATIVE_PATH);
 }
 
 declare global {
@@ -14,8 +29,8 @@ declare global {
 }
 
 function openDb(dbPath: string): BetterSqlite3.Database {
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  const db = new BetterSqlite3(dbPath);
+  fs.mkdirSync(/* turbopackIgnore: true */ path.dirname(dbPath), { recursive: true });
+  const db = new BetterSqlite3(/* turbopackIgnore: true */ dbPath);
   try {
     db.pragma("foreign_keys = ON");
     db.pragma("busy_timeout = 5000");

@@ -12,6 +12,7 @@ import {
   type Track,
 } from "./polimi/constraints";
 import { DEFAULT_ACADEMIC_YEAR } from "./polimi/catalog";
+import { assertAcademicYear, incrementAcademicYear } from "./polimi/academicYear";
 import type {
   PlanCycle,
   PlanDraftEntry,
@@ -65,7 +66,6 @@ type EntryRow = {
 
 const nowIso = () => new Date().toISOString();
 const ACTIVE_CYCLE_KEY = "active_plan_cycle_id";
-const ACADEMIC_YEAR_PATTERN = /^(\d{4})\/(\d{4})$/;
 
 const mapCycle = (row: CycleRow): PlanCycle => ({
   id: row.id,
@@ -98,18 +98,12 @@ const mapEntry = (row: EntryRow): PlanEntry => ({
   createdAt: row.created_at,
 });
 
-function assertAcademicYear(value: string): void {
-  const match = ACADEMIC_YEAR_PATTERN.exec(value);
-  if (!match || Number(match[2]) !== Number(match[1]) + 1) throw new Error("Anno accademico non valido: usa YYYY/YYYY con anni consecutivi.");
-}
-
 function setActiveCycleId(cycleId: number): void {
   getDb().prepare(`
     INSERT INTO settings (key, value) VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
   `).run(ACTIVE_CYCLE_KEY, String(cycleId));
 }
-
 function emptyCycle(academicYear: string, studentYear: 1 | 2 | 3, track: Track, createdAt: string): PlanCycle {
   return {
     id: null,
@@ -191,13 +185,35 @@ export function getCurrentPlanScenario(): PlanScenario {
   return buildDefaultScenario();
 }
 
+/** Id dello scenario attivo, senza rileggere le righe del piano. */
+export function getActiveCycleId(): number | null {
+  const row = getDb().prepare(`
+    SELECT c.id AS id FROM study_plan_cycles c
+    JOIN settings s ON s.key = ? AND CAST(s.value AS INTEGER) = c.id
+    WHERE c.archived_at IS NULL
+  `).get(ACTIVE_CYCLE_KEY) as { id: number } | undefined;
+  return row?.id ?? null;
+}
+
+/** Solo le righe di un piano: usata quando il ciclo è già stato letto. */
+export function getPlanEntries(cycleId: number): PlanEntry[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM study_plan_entries WHERE cycle_id = ? ORDER BY course_year, semester, id")
+    .all(cycleId) as EntryRow[];
+  return rows.map(mapEntry);
+}
+
+/** Rende attivo uno scenario senza rileggerlo: usata dai flussi che lo hanno già in mano. */
+export function markCycleActive(cycleId: number): void {
+  setActiveCycleId(cycleId);
+}
+
 export function getPlanScenario(cycleId: number): PlanScenario | null {
   if (!Number.isSafeInteger(cycleId) || cycleId <= 0) return null;
   const db = getDb();
   const cycle = db.prepare("SELECT * FROM study_plan_cycles WHERE id = ?").get(cycleId) as CycleRow | undefined;
   if (!cycle) return null;
-  const entries = db.prepare("SELECT * FROM study_plan_entries WHERE cycle_id = ? ORDER BY course_year, semester, id").all(cycleId) as EntryRow[];
-  return { cycle: mapCycle(cycle), entries: entries.map(mapEntry) };
+  return { cycle: mapCycle(cycle), entries: getPlanEntries(cycleId) };
 }
 
 export function getBaseRevisionScenario(scenario: PlanScenario): PlanScenario | null {
@@ -282,7 +298,11 @@ function normalizeEntry(entry: PlanDraftEntry, payload: PlanDraftPayload): Omit<
   };
 }
 
-export function savePlanDraft(payload: PlanDraftPayload): PlanScenario {
+/**
+ * Controlla e normalizza una bozza senza scrivere nulla. Serve anche al simulatore: gli esiti
+ * della carriera non devono iniziare a essere applicati prima di sapere che il piano è salvabile.
+ */
+function normalizePlanDraft(payload: PlanDraftPayload): ReturnType<typeof normalizeEntry>[] {
   assertAcademicYear(payload.academicYear);
   if (![1, 2, 3].includes(payload.studentYear)) throw new Error("Anno di corso non valido.");
   if (payload.track !== "I3I" && payload.track !== "I3C") throw new Error("Percorso non valido.");
@@ -293,6 +313,7 @@ export function savePlanDraft(payload: PlanDraftPayload): PlanScenario {
   if (payload.cycleId !== null) {
     const current = getDb().prepare("SELECT validation_mode, track FROM study_plan_cycles WHERE id = ?")
       .get(payload.cycleId) as { validation_mode: PlanValidationMode; track: Track } | undefined;
+    if (!current) throw new Error("Scenario non trovato.");
     if (current?.validation_mode === "second_semester_revision" && payload.track !== current.track) {
       throw new Error("Nella modifica del secondo semestre il percorso non può essere cambiato.");
     }
@@ -300,6 +321,16 @@ export function savePlanDraft(payload: PlanDraftPayload): PlanScenario {
 
   const normalized = payload.entries.map((entry) => normalizeEntry(entry, payload));
   if (new Set(normalized.map((entry) => entry.courseCode)).size !== normalized.length) throw new Error("Il piano contiene attività duplicate.");
+  return normalized;
+}
+
+/** Valida una bozza prima di qualsiasi effetto collaterale. */
+export function validatePlanDraft(payload: PlanDraftPayload): void {
+  normalizePlanDraft(payload);
+}
+
+export function savePlanDraft(payload: PlanDraftPayload): PlanScenario {
+  const normalized = normalizePlanDraft(payload);
 
   const db = getDb();
   const now = nowIso();
@@ -483,10 +514,4 @@ export function createSecondSemesterRevision(cycleId: number): PlanScenario {
     throw error;
   }
   return getPlanScenario(revisionId) as PlanScenario;
-}
-
-function incrementAcademicYear(academicYear: string): string {
-  const match = ACADEMIC_YEAR_PATTERN.exec(academicYear);
-  if (!match) throw new Error("Anno accademico non valido.");
-  return `${Number(match[1]) + 1}/${Number(match[2]) + 1}`;
 }

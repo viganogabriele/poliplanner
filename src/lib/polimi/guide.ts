@@ -9,7 +9,15 @@ export const PIANO_GUIDE_SECTIONS = [
   },
   {
     title: "Da reinserire",
-    content: "Gli esami già frequentati e non ancora verbalizzati vanno reinseriti nel piano nuovo prima di aggiungere nuove frequenze. Vale anche per i corsi del secondo semestre che pensi di recuperare a gennaio o febbraio.",
+    content: "Gli esami già frequentati e non ancora verbalizzati vanno reinseriti nel piano nuovo prima di aggiungere nuove frequenze. Vale anche per i corsi del secondo semestre che pensi di recuperare a gennaio o febbraio. Un reinserimento riporta la riga com'era: stesso blocco, stesso anno di offerta.",
+  },
+  {
+    title: "\"Non scelto\" non vuol dire \"non superato\"",
+    content: "Il Regolamento dice che Logica e Algebra e Algoritmi e Principi dell'Informatica, obbligatori per I3I, «se non scelti al secondo anno devono essere scelti al terzo anno (TABREC)». La condizione è sulla scelta, non sull'esito. Da qui due casi opposti. Se l'insegnamento era nel tuo piano del secondo anno e l'esame non è verbalizzato, è un reinserimento: resta nel blocco in cui l'avevi scelto e non consuma una seconda volta i CFU del gruppo a scelta del terzo anno. Se invece non l'avevi mai scelto, adesso lo scegli nella tabella dei recuperi: è una nuova frequenza e i suoi CFU pesano su quel gruppo. Logica e Algoritmi seguono ciascuno la propria storia: puoi averne uno reinserito e l'altro da scegliere.",
+  },
+  {
+    title: "Verbalizzato dopo la presentazione",
+    content: "Se superi e verbalizzi l'esame dopo aver presentato il piano, l'attività si chiude in carriera ma la riga resta nel piano presentato: non conta più per la contribuzione. Nella finestra di modifica del secondo semestre non puoi togliere quella riga se è del primo semestre, nemmeno se l'hai superata.",
   },
   {
     title: "Nuove frequenze e contribuzione",
@@ -21,11 +29,11 @@ export const PIANO_GUIDE_SECTIONS = [
   },
   {
     title: "Il gruppo da 15 CFU non si chiude necessariamente subito",
-    content: "Il totale del gruppo a scelta è attestato dal Manifesto, ma il momento in cui lo raggiungi no. Poiché le tabelle contengono insegnamenti del secondo semestre, un ammanco colmabile con quelli è un avviso e non un errore: puoi completarlo nella presentazione annuale oppure nella finestra di modifica semestrale. Per I3I, Logica e Algebra (5 CFU) e Algoritmi e Principi dell'Informatica (10 CFU), se non acquisiti al secondo anno, vanno recuperati in TABREC e contribuiscono a quei 15 CFU.",
+    content: "Il totale del gruppo a scelta è attestato dal Regolamento, ma il momento in cui lo raggiungi no. Poiché le tabelle contengono insegnamenti del secondo semestre, un ammanco colmabile con quelli è un avviso e non un errore: puoi completarlo nella presentazione annuale oppure nella finestra di modifica semestrale. Attenzione a cosa entra nel conteggio: un insegnamento conta in quel gruppo solo se lo hai scelto in una di quelle tabelle. Lo stesso codice scelto in un blocco obbligatorio del secondo anno non ci rientra.",
   },
   {
     title: "Manifesto, prassi e ipotesi",
-    content: "Ogni segnalazione dice da dove viene. \"Manifesto\": vincolo attestato dal Regolamento o dal Manifesto. \"Da verificare\": regola operativa plausibile ma da confermare nei Servizi Online, come le finestre di presentazione o i moduli associati a un recupero. \"Simulazione\": un'ipotesi che hai introdotto tu nel simulatore.",
+    content: "Ogni segnalazione dice da dove viene. \"Regolamento\": vincolo attestato dal Regolamento didattico del corso. \"Da verificare\": regola operativa plausibile ma da confermare nei Servizi Online, come le finestre di presentazione, l'intervallo di CFU per anno o i moduli di progetto associati a una scelta in tabella di recupero. \"Simulazione\": un'ipotesi che hai introdotto tu nel simulatore. Un anno accademico può inoltre essere marcato \"dati da riconfermare\" quando il Regolamento pubblicato è ancora una bozza informativa: i dati ci sono e sono ufficiali, ma possono cambiare.",
   },
   {
     title: "Simulatore",
@@ -33,7 +41,7 @@ export const PIANO_GUIDE_SECTIONS = [
   },
   {
     title: "Errori, avvisi e consigli",
-    content: "Un errore blocca la compilazione: il piano così non sta in piedi. Un avviso segnala qualcosa da controllare, spesso un dato non verificabile offline. Un consiglio riguarda la proiezione verso la laurea o la magistrale e non blocca nulla.",
+    content: "Un errore blocca la compilazione: il piano così non sta in piedi. Un avviso segnala qualcosa da controllare, spesso un dato non verificabile offline. Un consiglio riguarda la proiezione verso la laurea o la magistrale e non blocca nulla. Le regole di anni di corso successivi a quello che stai pianificando non compaiono mai come errori o avvisi: le trovi in \"Anteprima anni successivi\".",
   },
   {
     title: "Questo non è un servizio ufficiale",

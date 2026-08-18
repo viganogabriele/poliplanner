@@ -48,9 +48,15 @@ export type Course = {
   parentCode?: string;
   description?: string;
   offerings?: CourseOffering[];
+  /**
+   * Insegnamento a numero chiuso secondo il Manifesto. La disponibilità di posti non è
+   * verificabile offline: la UI lo dichiara come limitazione, non come errore.
+   */
+  enrolmentCapped?: boolean;
 };
 
 export type ElectiveGroup = {
+  /** Nome leggibile del gruppo: la UI non deve mai mostrare la sigla da sola. */
   label: string;
   description: string;
   maxPicks: number | null;
@@ -139,7 +145,20 @@ export type PlanRule =
        */
       completableInSecondSemesterWindow: boolean;
     } & RuleBase & RuleScope)
-  | ({ kind: "recovery_required"; codes: string[] } & RuleBase & RuleScope)
+  | ({
+      kind: "recovery_required";
+      codes: string[];
+      /**
+       * Regole del biennio che la scelta nella tabella di recupero **assolve**.
+       *
+       * Serve perché il Regolamento offre due strade alternative per lo stesso obbligo: scegliere
+       * l'insegnamento nel blocco del secondo anno, oppure — se non lo si è scelto — nella tabella
+       * di recupero al terzo. Senza questo collegamento il blocco del secondo anno resterebbe
+       * "incompleto" per sempre e pretenderebbe anche il modulo di progetto da 1 CFU, che invece le
+       * tabelle del terzo anno non elencano.
+       */
+      dischargesRuleIds?: string[];
+    } & RuleBase & RuleScope)
   | ({ kind: "linked_modules"; pairs: LinkedModulePair[] } & RuleBase)
   | ({ kind: "single_instance"; codes: string[]; maxSelected: number } & RuleBase)
   | ({ kind: "advisory_any_of"; codes: string[]; message: string } & RuleBase);
@@ -147,6 +166,21 @@ export type PlanRule =
 // ---------------------------------------------------------------------------
 // Configurazione annuale e di laurea
 // ---------------------------------------------------------------------------
+
+/**
+ * Un vincolo annuale con la propria fonte e provenienza. Serve perché non tutti i limiti
+ * dell'anno stanno nel Regolamento del corso: l'intervallo CFU della presentazione ordinaria,
+ * per esempio, viene dalle norme di presentazione del piano e va dichiarato come tale.
+ */
+export type AnnualSource = { source: string; provenance: RuleProvenance };
+
+export type AnnualSourceKey =
+  | "cfuRange"
+  | "reinsertions"
+  | "contribution"
+  | "supernumerary"
+  | "externalChoices"
+  | "revision";
 
 export type AnnualRules = {
   /**
@@ -174,7 +208,7 @@ export type AnnualRules = {
     allowTrackChange: boolean;
     allowSelfCertification: boolean;
   };
-  sources: Record<string, string>;
+  sources: Record<AnnualSourceKey, AnnualSource>;
 };
 
 export type DegreeRules = {
@@ -191,13 +225,50 @@ export type DegreeRules = {
 
 export type CatalogDataStatus = "verified_from_manifesto" | "to_verify";
 
+/**
+ * Natura di una fonte del catalogo. Distinguere la bozza dal documento definitivo è la
+ * differenza tra "dato provvisorio" e "dato inesistente": la seconda non va mai dichiarata
+ * se un documento ufficiale, anche non definitivo, esiste ed è stato trascritto.
+ */
+export type CatalogSourceKind =
+  /** Regolamento/Manifesto approvato e definitivo. */
+  | "regolamento_final"
+  /** Bozza informativa pubblicata dall'ateneo: ufficiale ma soggetta a modifiche. */
+  | "regolamento_draft"
+  /** Norme di presentazione del piano degli studi, fuori dal Regolamento del corso. */
+  | "plan_submission_rules"
+  /** Estrazione interna al repository usata come documento di lavoro. */
+  | "internal_extraction";
+
+export const CATALOG_SOURCE_KIND_LABELS: Record<CatalogSourceKind, string> = {
+  regolamento_final: "Regolamento definitivo",
+  regolamento_draft: "Bozza informativa ufficiale",
+  plan_submission_rules: "Norme di presentazione del piano",
+  internal_extraction: "Estrazione interna di lavoro",
+};
+
+export type CatalogSource = {
+  label: string;
+  kind: CatalogSourceKind;
+  /** URL pubblico della fonte, quando esiste. */
+  url?: string;
+  /** Data di consultazione della fonte, in formato YYYY-MM-DD. */
+  retrievedOn?: string;
+  note?: string;
+};
+
 export type Catalog = {
   academicYear: string;
   courseCode: string;
   dataStatus: CatalogDataStatus;
+  /**
+   * Perché lo stato dei dati è quello dichiarato, in una frase. Va detto cosa manca
+   * davvero: una bozza pubblicata non è un Manifesto assente.
+   */
+  dataStatusReason: string;
   /** Note mostrate all'utente quando i dati non sono confermati sul Manifesto ufficiale. */
   dataNotes: string[];
-  sources: string[];
+  sources: CatalogSource[];
   courses: Course[];
   electiveGroups: Record<string, ElectiveGroup>;
   rules: PlanRule[];

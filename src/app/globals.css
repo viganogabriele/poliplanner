@@ -114,8 +114,17 @@ input[type="date"] {
   100% { background-position:  200% 0; }
 }
 
-.animate-pop    { animation: pop 0.3s ease-out; }
-.animate-fadeup { animation: fadeInUp 0.45s ease-out both; }
+/* Apertura dei pannelli richiudibili: sostituisce l'animazione JS che trascinava
+   `motion/react` nel primo caricamento della pagina Piano. Il reset per
+   prefers-reduced-motion qui sotto la neutralizza senza codice aggiuntivo. */
+@keyframes panelOpen {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-pop        { animation: pop 0.3s ease-out; }
+.animate-fadeup     { animation: fadeInUp 0.45s ease-out both; }
+.animate-panel-open { animation: panelOpen 0.18s ease-out both; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

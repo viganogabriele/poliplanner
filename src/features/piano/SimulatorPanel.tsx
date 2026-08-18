@@ -15,7 +15,7 @@ import {
 } from "@/lib/polimi/simulator";
 import type { PlanScenario } from "@/lib/polimi/planModel";
 import type { PlanValidationContext } from "@/lib/polimi/validation";
-import { ProvenanceChip } from "./ValidationPanel";
+import { ProvenanceChip } from "./ProvenanceChip";
 import { cn } from "@/lib/ui";
 
 type Props = {

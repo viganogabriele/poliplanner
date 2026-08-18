@@ -30,16 +30,32 @@ import {
   syncExamsWithPlan,
   upsertCareerExam,
 } from "@/lib/esami";
+import { applySimulationOutcome, type AppliedSimulation, type CareerOutcome } from "@/lib/pianoApply";
 import { getApprovalStatus, validatePlanScenario } from "@/lib/polimi/validation";
 import type { ExamStatus, Track } from "@/lib/polimi/constraints";
+import type { CareerExamsMap } from "@/lib/polimi/career";
 import type { LessonMode } from "@/lib/types";
 
 export type ActionResult<T = undefined> = T extends undefined
   ? { ok: true } | { ok: false; error: string }
   : { ok: true; data: T } | { ok: false; error: string };
 
-function refresh(): void {
-  revalidatePath("/", "layout");
+/**
+ * Invalidazione mirata.
+ *
+ * `revalidatePath("/", "layout")` buttava via l'intero albero del layout — comprese le rotte
+ * statiche e le pagine che non dipendono dal dato modificato — a ogni singola mutazione. Qui ogni
+ * gruppo elenca soltanto le rotte che leggono davvero quel dato.
+ */
+const PLAN_PATHS = ["/piano"];
+const CAREER_PATHS = ["/piano", "/esami", "/dashboard", "/materie"];
+const SCHEDULE_PATHS = ["/dashboard", "/lessons", "/calendar", "/materie"];
+const EVERYTHING = ["/", "/piano", "/esami", "/dashboard", "/lessons", "/calendar", "/materie", "/settings"];
+
+function revalidate(paths: string[]): void {
+  for (const path of paths) revalidatePath(path);
+  // Le schede materia sono una rotta dinamica: si invalida lo schema, non ogni istanza.
+  if (paths.includes("/materie")) revalidatePath("/materie/[subject]", "page");
 }
 
 function validId(value: unknown): number {
@@ -73,7 +89,7 @@ function validExamStatus(value: unknown): ExamStatus {
   return value as ExamStatus;
 }
 
-export async function upsertCareerExamAction(input: unknown): Promise<ActionResult> {
+export async function upsertCareerExamAction(input: unknown): Promise<ActionResult<{ exams: CareerExamsMap }>> {
   try {
     if (typeof input !== "object" || input === null) throw new Error("Dati carriera non validi.");
     const raw = input as Record<string, unknown>;
@@ -85,14 +101,14 @@ export async function upsertCareerExamAction(input: unknown): Promise<ActionResu
       passedAt: (raw.passedAt as string | null) ?? null,
       registeredAt: (raw.registeredAt as string | null) ?? null,
     });
-    refresh();
-    return { ok: true };
+    revalidate(CAREER_PATHS);
+    return { ok: true, data: { exams: getExams() } };
   } catch (error) {
     return failure(error, "upsertCareerExam");
   }
 }
 
-export async function importCareerExamsAction(rows: unknown): Promise<ActionResult<{ imported: number }>> {
+export async function importCareerExamsAction(rows: unknown): Promise<ActionResult<{ imported: number; exams: CareerExamsMap }>> {
   try {
     if (!Array.isArray(rows)) throw new Error("Formato import non valido.");
     const imported = importCareerExams(rows.map((row) => {
@@ -106,19 +122,19 @@ export async function importCareerExamsAction(rows: unknown): Promise<ActionResu
         registeredAt: (raw.registeredAt as string | null) ?? null,
       };
     }));
-    refresh();
-    return { ok: true, data: { imported } };
+    revalidate(CAREER_PATHS);
+    return { ok: true, data: { imported, exams: getExams() } };
   } catch (error) {
     return failure(error, "importCareerExams");
   }
 }
 
-export async function deleteCareerExamAction(code: unknown): Promise<ActionResult> {
+export async function deleteCareerExamAction(code: unknown): Promise<ActionResult<{ exams: CareerExamsMap }>> {
   try {
     if (typeof code !== "string") throw new Error("Codice corso non valido.");
     deleteCareerExam(code);
-    refresh();
-    return { ok: true };
+    revalidate(CAREER_PATHS);
+    return { ok: true, data: { exams: getExams() } };
   } catch (error) {
     return failure(error, "deleteCareerExam");
   }
@@ -127,7 +143,7 @@ export async function deleteCareerExamAction(code: unknown): Promise<ActionResul
 export async function saveScheduleAction(rows: unknown): Promise<ActionResult> {
   try {
     saveSchedule(validateScheduleRows(rows));
-    refresh();
+    revalidate(SCHEDULE_PATHS);
     return { ok: true };
   } catch (error) {
     return failure(error, "saveSchedule");
@@ -138,7 +154,7 @@ export async function toggleLessonAction(rawId: unknown, done: unknown): Promise
   try {
     if (typeof done !== "boolean") throw new Error("Stato completamento non valido.");
     toggleLesson(validId(rawId), done);
-    refresh();
+    revalidate(SCHEDULE_PATHS);
     return { ok: true };
   } catch (error) {
     return failure(error, "toggleLesson");
@@ -149,7 +165,7 @@ export async function setLessonModeAction(rawId: unknown, mode: unknown): Promis
   try {
     if (mode !== "presenza" && mode !== "asincrona") throw new Error("Modalità lezione non valida.");
     setLessonMode(validId(rawId), mode as LessonMode);
-    refresh();
+    revalidate(SCHEDULE_PATHS);
     return { ok: true };
   } catch (error) {
     return failure(error, "setLessonMode");
@@ -159,7 +175,7 @@ export async function setLessonModeAction(rawId: unknown, mode: unknown): Promis
 export async function resetCompletionsAction(): Promise<ActionResult> {
   try {
     resetCompletions();
-    refresh();
+    revalidate(SCHEDULE_PATHS);
     return { ok: true };
   } catch (error) {
     return failure(error, "resetCompletions");
@@ -169,7 +185,7 @@ export async function resetCompletionsAction(): Promise<ActionResult> {
 export async function resetDatabaseAction(): Promise<ActionResult> {
   try {
     resetDatabase(getDb());
-    refresh();
+    revalidate(EVERYTHING);
     return { ok: true };
   } catch (error) {
     return failure(error, "resetDatabase");
@@ -181,7 +197,7 @@ export async function seedDatabaseAction(): Promise<ActionResult> {
     const db = getDb();
     resetDatabase(db);
     seedDatabase(db);
-    refresh();
+    revalidate(EVERYTHING);
     return { ok: true };
   } catch (error) {
     return failure(error, "seedDatabase");
@@ -192,7 +208,7 @@ export async function savePlanDraftAction(payload: PlanDraftPayload): Promise<Ac
   try {
     const scenario = savePlanDraft(payload);
     syncExamsWithPlan(scenario.entries.map((entry) => entry.courseCode));
-    refresh();
+    revalidate(CAREER_PATHS);
     return { ok: true, data: scenario };
   } catch (error) {
     return failure(error, "savePlanDraft");
@@ -214,7 +230,7 @@ export async function markPlanReadyAction(rawCycleId: unknown): Promise<ActionRe
     const errors = result.issues.filter((item) => item.type === "error");
     if (errors.length) throw new Error(`Scenario non pronto: ${errors.length} errori bloccanti.`);
     const scenario = updateCycleStatus(cycleId, "ready", result.summary.approvalStatus);
-    refresh();
+    revalidate(PLAN_PATHS);
     return { ok: true, data: scenario };
   } catch (error) {
     return failure(error, "markPlanReady");
@@ -229,7 +245,7 @@ export async function markPlanCompiledOnPolimiAction(rawCycleId: unknown): Promi
     const errors = result.issues.filter((item) => item.type === "error");
     if (errors.length) throw new Error(`Non compilabile: ${errors.length} errori bloccanti.`);
     const updated = updateCycleStatus(cycleId, "polimi_compiled", getApprovalStatus(scenario.entries));
-    refresh();
+    revalidate(CAREER_PATHS);
     return { ok: true, data: updated };
   } catch (error) {
     return failure(error, "markPlanCompiled");
@@ -244,7 +260,7 @@ export async function createAnnualDraftAction(academicYear: unknown, studentYear
     if (track !== "I3I" && track !== "I3C") throw new Error("Percorso non valido.");
     const scenario = createAnnualDraft(academicYear, year, track as Track);
     syncExamsWithPlan(scenario.entries.map((entry) => entry.courseCode));
-    refresh();
+    revalidate(CAREER_PATHS);
     return { ok: true, data: scenario };
   } catch (error) {
     return failure(error, "createAnnualDraft");
@@ -255,7 +271,7 @@ export async function duplicatePlanForNextAcademicYearAction(rawCycleId: unknown
   try {
     const scenario = duplicatePlanForNextAcademicYear(validId(rawCycleId));
     syncExamsWithPlan(scenario.entries.map((entry) => entry.courseCode));
-    refresh();
+    revalidate(CAREER_PATHS);
     return { ok: true, data: scenario };
   } catch (error) {
     return failure(error, "duplicatePlan");
@@ -265,7 +281,7 @@ export async function duplicatePlanForNextAcademicYearAction(rawCycleId: unknown
 export async function createSecondSemesterRevisionAction(rawCycleId: unknown): Promise<ActionResult<ReturnType<typeof createSecondSemesterRevision>>> {
   try {
     const scenario = createSecondSemesterRevision(validId(rawCycleId));
-    refresh();
+    revalidate(CAREER_PATHS);
     return { ok: true, data: scenario };
   } catch (error) {
     return failure(error, "createRevision");
@@ -275,7 +291,7 @@ export async function createSecondSemesterRevisionAction(rawCycleId: unknown): P
 export async function setActivePlanCycleAction(rawCycleId: unknown): Promise<ActionResult<ReturnType<typeof setActivePlanCycle>>> {
   try {
     const scenario = setActivePlanCycle(validId(rawCycleId));
-    refresh();
+    revalidate(CAREER_PATHS);
     return { ok: true, data: scenario };
   } catch (error) {
     return failure(error, "setActivePlanCycle");
@@ -285,7 +301,8 @@ export async function setActivePlanCycleAction(rawCycleId: unknown): Promise<Act
 export async function archivePlanCycleAction(rawCycleId: unknown): Promise<ActionResult<ReturnType<typeof archivePlanCycle>>> {
   try {
     const scenario = archivePlanCycle(validId(rawCycleId));
-    refresh();
+    // Se era attivo, dashboard, esami e materie cambiano immediatamente il loro scenario di base.
+    revalidate(CAREER_PATHS);
     return { ok: true, data: scenario };
   } catch (error) {
     return failure(error, "archivePlanCycle");
@@ -295,10 +312,45 @@ export async function archivePlanCycleAction(rawCycleId: unknown): Promise<Actio
 export async function restorePlanCycleAction(rawCycleId: unknown): Promise<ActionResult<ReturnType<typeof restorePlanCycle>>> {
   try {
     const scenario = restorePlanCycle(validId(rawCycleId));
-    refresh();
+    revalidate(PLAN_PATHS);
     return { ok: true, data: scenario };
   } catch (error) {
     return failure(error, "restorePlanCycle");
+  }
+}
+
+/**
+ * Applica uno scenario del simulatore in un colpo solo: tutti gli esiti di carriera ipotizzati e
+ * la bozza del piano nella stessa transazione, una sola invalidazione, e i dati aggiornati
+ * restituiti al client così da non richiedere un `router.refresh()` aggiuntivo.
+ */
+export async function applySimulationScenarioAction(input: unknown): Promise<ActionResult<AppliedSimulation>> {
+  try {
+    if (typeof input !== "object" || input === null) throw new Error("Scenario da applicare non valido.");
+    const raw = input as { outcomes?: unknown; draft?: unknown };
+    if (!Array.isArray(raw.outcomes)) throw new Error("Esiti dello scenario non validi.");
+    if (raw.outcomes.length > 50) throw new Error("Troppi esiti da applicare in una volta.");
+
+    const outcomes: CareerOutcome[] = raw.outcomes.map((item) => {
+      const row = item as Record<string, unknown>;
+      if (typeof row?.code !== "string") throw new Error("Codice corso non valido in uno degli esiti.");
+      return {
+        code: row.code,
+        status: validExamStatus(row.status),
+        grade: row.grade === undefined ? undefined : (row.grade as string | null),
+        passedAt: (row.passedAt as string | null) ?? null,
+        registeredAt: (row.registeredAt as string | null) ?? null,
+      };
+    });
+
+    const applied = applySimulationOutcome({
+      outcomes,
+      draft: raw.draft as PlanDraftPayload,
+    });
+    revalidate(CAREER_PATHS);
+    return { ok: true, data: applied };
+  } catch (error) {
+    return failure(error, "applySimulationScenario");
   }
 }
 
@@ -306,7 +358,7 @@ export async function setExamStatusAction(code: unknown, status: unknown, dates?
   try {
     if (typeof code !== "string" || typeof status !== "string") throw new Error("Dati esame non validi.");
     setExamStatus(code, status as ExamStatus, dates);
-    refresh();
+    revalidate(CAREER_PATHS);
     return { ok: true };
   } catch (error) {
     return failure(error, "setExamStatus");
@@ -317,7 +369,7 @@ export async function setExamGradeAction(code: unknown, grade: unknown): Promise
   try {
     if (typeof code !== "string" || (grade !== null && typeof grade !== "string")) throw new Error("Voto non valido.");
     setExamGrade(code, grade as string | null);
-    refresh();
+    revalidate(CAREER_PATHS);
     return { ok: true };
   } catch (error) {
     return failure(error, "setExamGrade");
@@ -328,7 +380,7 @@ export async function markExamRegisteredAction(code: unknown, registeredAt: unkn
   try {
     if (typeof code !== "string" || (registeredAt !== null && typeof registeredAt !== "string")) throw new Error("Dati di verbalizzazione non validi.");
     markExamRegistered(code, registeredAt as string | null);
-    refresh();
+    revalidate(CAREER_PATHS);
     return { ok: true };
   } catch (error) {
     return failure(error, "markExamRegistered");

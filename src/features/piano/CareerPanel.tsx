@@ -28,7 +28,7 @@ type Props = {
   exams: CareerExamsMap;
   academicYear: string;
   track: Track;
-  onChanged: () => void;
+  onChanged: (exams: CareerExamsMap) => void;
 };
 
 export default function CareerPanel({ exams, academicYear, track, onChanged }: Props) {
@@ -48,11 +48,11 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
   const registeredCfu = rows.filter((row) => row.status === "passed_registered").reduce((total, row) => total + row.cfu, 0);
   const unregisteredCount = rows.filter((row) => row.status === "passed_unregistered").length;
 
-  const run = (label: string, action: () => Promise<{ ok: boolean; error?: string }>) => {
+  const run = (label: string, action: () => Promise<{ ok: true; data: { exams: CareerExamsMap } } | { ok: false; error: string }>) => {
     startTransition(async () => {
       const result = await action();
       setMessage(result.ok ? { ok: true, text: label } : { ok: false, text: result.error ?? "Operazione non riuscita." });
-      if (result.ok) onChanged();
+      if (result.ok) onChanged(result.data.exams);
     });
   };
 

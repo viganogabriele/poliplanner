@@ -14,35 +14,36 @@ import {
   courseGroup,
   courseGroupsForTrack,
   courseName,
-  findCourse,
   findOffering,
   offeringSemester,
   offeringYear,
 } from "./catalog";
 import type { Catalog, CourseYear, PlanRule } from "./catalog/types";
-import { buildCareerView, type CareerExamsMap, type CareerView } from "./career";
+import { buildCareerView, type CareerView } from "./career";
 import type { EntryPosition, ExamStatus, Track } from "./constraints";
 import { activityCategory } from "./catalog";
+import {
+  collectAcquiredFrequencies,
+  type AcquiredFrequency,
+  type AnnualPlanInputs,
+  type FrequencySource,
+} from "./frequency";
+import { classifyStructuralChoices, codesToChooseInRecoveryTable } from "./structuralChoice";
 import {
   entryCfu,
   isReinsertion,
   type PlanEntry,
   type PlanScenario,
-  type PreviousCompiledEntry,
 } from "./planModel";
 
-export type FrequencySource = "previous_plan" | "exam_status";
+export type { AcquiredFrequency, AnnualPlanInputs, FrequencySource } from "./frequency";
+export { collectAcquiredFrequencies } from "./frequency";
 
-export type AcquiredFrequency = {
-  courseCode: string;
-  courseYear: CourseYear;
-  semester: 1 | 2;
-  position: EntryPosition;
-  sourceAcademicYear: string | null;
-  sourceCycleId: number | null;
-  source: FrequencySource;
-};
-
+/**
+ * Perché un'attività va reinserita. Descrive l'**esito** che ha lasciato l'attività aperta,
+ * non la scelta: "mai scelto" non è un motivo di reinserimento, è un caso diverso
+ * modellato in `structuralChoice.ts`.
+ */
 export type ReinsertionReason = "previous_plan_not_registered" | "exam_not_passed" | "passed_unregistered";
 
 export type RequiredReinsertion = AcquiredFrequency & {
@@ -53,63 +54,6 @@ export type RequiredReinsertion = AcquiredFrequency & {
   /** Verbalizzato dopo la data di riferimento del piano: resta nel piano ma non è più dovuto. */
   registeredAfterSubmission: boolean;
 };
-
-export type AnnualPlanInputs = {
-  catalog: Catalog;
-  track: Track;
-  studentYear: CourseYear;
-  academicYear: string;
-  exams: CareerExamsMap;
-  previousCompiledEntries: PreviousCompiledEntry[];
-  /** Data a cui valutare "già verbalizzato": normalmente la presentazione del piano. */
-  asOf?: string | null;
-};
-
-// ---------------------------------------------------------------------------
-// Frequenze acquisite
-// ---------------------------------------------------------------------------
-
-/**
- * Frequenze già acquisite: piani di anni accademici precedenti realmente compilati su PoliMi,
- * più gli esami la cui carriera implica una frequenza (tentato e non superato, oppure superato
- * ma non verbalizzato) anche senza uno storico di piani nell'app.
- */
-export function collectAcquiredFrequencies(inputs: AnnualPlanInputs): Map<string, AcquiredFrequency> {
-  const { catalog, track, academicYear, exams, previousCompiledEntries } = inputs;
-  const frequencies = new Map<string, AcquiredFrequency>();
-
-  for (const { cycle, entry } of previousCompiledEntries) {
-    if (cycle.academicYear >= academicYear) continue;
-    if (entry.entryKind !== "catalog") continue;
-    if (frequencies.has(entry.courseCode)) continue;
-    frequencies.set(entry.courseCode, {
-      courseCode: entry.courseCode,
-      courseYear: entry.courseYear,
-      semester: entry.semester,
-      position: entry.position,
-      sourceAcademicYear: cycle.academicYear,
-      sourceCycleId: cycle.id,
-      source: "previous_plan",
-    });
-  }
-
-  const implying = new Set<ExamStatus>(catalog.annual.frequencyImplyingExamStatuses);
-  for (const [code, exam] of Object.entries(exams)) {
-    if (frequencies.has(code) || !implying.has(exam.status)) continue;
-    if (!findCourse(catalog, code)) continue;
-    frequencies.set(code, {
-      courseCode: code,
-      courseYear: offeringYear(catalog, code, track),
-      semester: offeringSemester(catalog, code, track),
-      position: "effective",
-      sourceAcademicYear: null,
-      sourceCycleId: null,
-      source: "exam_status",
-    });
-  }
-
-  return frequencies;
-}
 
 // ---------------------------------------------------------------------------
 // Reinserimenti
@@ -217,8 +161,9 @@ export function buildAnnualPlanProposal(inputs: AnnualPlanInputs, createdAt: str
 
   /**
    * Un reinserimento consuma il gruppo a scelta solo se **già** lo consumava nel piano da cui
-   * viene: Logica scelta nel blocco B1 del secondo anno e non superata resta un B1 reinserito,
-   * mentre Logica recuperata in TABREC al terzo anno pesa sui 15 CFU.
+   * viene: Logica e Algebra scelta nel blocco del secondo anno e non verbalizzata resta un
+   * reinserimento di quel blocco, mentre la stessa Logica scelta al terzo anno nella tabella dei
+   * recuperi pesa sui 15 CFU. Il gruppo che conta è quello con cui la voce entra nel piano.
    */
   const reinsertedChoiceCfu = entries.reduce((total, entry) => {
     const group = courseGroup(catalog, entry.courseCode, track, entry.courseYear, entry.semester);
@@ -226,24 +171,23 @@ export function buildAnnualPlanProposal(inputs: AnnualPlanInputs, createdAt: str
     return total + courseCfu(catalog, entry.courseCode);
   }, 0);
 
-  // Recuperi strutturali non ancora coperti: entrano nel gruppo di scelta come da §7.3/§8.2.
-  const missingRecoveries: string[] = [];
-  for (const rule of catalog.rules) {
-    if (rule.kind !== "recovery_required" || !ruleApplies(rule, track, studentYear)) continue;
-    for (const code of rule.codes) {
-      if (selected.has(code) || career.isSettled(code, asOf) || missingRecoveries.includes(code)) continue;
-      missingRecoveries.push(code);
-    }
-  }
+  /**
+   * Scelte obbligate condizionate ancora da fare. La condizione del Regolamento è "non scelto al
+   * secondo anno", non "non superato": chi l'aveva scelto compare già fra i reinserimenti sopra,
+   * chi non l'ha mai scelto lo sceglie ora nella tabella dei recuperi, dove occupa i CFU del
+   * gruppo a scelta. Vedi `structuralChoice.ts` per il modello degli stati.
+   */
+  const toChooseInRecoveryTable = codesToChooseInRecoveryTable(classifyStructuralChoices(inputs))
+    .filter((code) => !selected.has(code));
 
   const defaults = catalog.defaultNewFrequencies[track][studentYear] ?? [];
   const newFrequencies = [
-    ...missingRecoveries,
-    ...defaults.filter((code) => !selected.has(code) && !career.isSettled(code, asOf) && !missingRecoveries.includes(code)),
+    ...toChooseInRecoveryTable,
+    ...defaults.filter((code) => !selected.has(code) && !career.isSettled(code, asOf) && !toChooseInRecoveryTable.includes(code)),
   ];
 
-  // Il gruppo a scelta ha un totale esatto: se reinserimenti e recuperi lo saturano,
-  // si toglie l'ultima scelta facoltativa invece di superare il limite.
+  // Il gruppo a scelta ha un totale esatto: se le scelte obbligate lo saturano, si toglie
+  // l'ultima scelta facoltativa invece di superare il limite.
   if (choiceRule) {
     let budget = choiceRule.requiredCfu - reinsertedChoiceCfu;
     const keep: string[] = [];
@@ -253,8 +197,8 @@ export function buildAnnualPlanProposal(inputs: AnnualPlanInputs, createdAt: str
         continue;
       }
       const cfu = courseCfu(catalog, code);
-      const isRecovery = missingRecoveries.includes(code);
-      if (!isRecovery && cfu > budget) continue;
+      const isMandatoryChoice = toChooseInRecoveryTable.includes(code);
+      if (!isMandatoryChoice && cfu > budget) continue;
       budget -= cfu;
       keep.push(code);
     }
@@ -269,8 +213,8 @@ export function buildAnnualPlanProposal(inputs: AnnualPlanInputs, createdAt: str
   }
 
   // Moduli di prova finale collegati: seguono il corso padre solo nei contesti in cui il
-  // Manifesto attesta l'associazione. Per un recupero in tabella l'obbligo non è documentato,
-  // quindi la proposta non lo aggiunge: il validatore emette una verifica.
+  // Regolamento attesta l'associazione. Per una scelta nella tabella dei recuperi l'obbligo non è
+  // documentato, quindi la proposta non lo aggiunge: il validatore emette una verifica.
   for (const rule of catalog.rules) {
     if (rule.kind !== "linked_modules") continue;
     for (const pair of rule.pairs) {

@@ -26,9 +26,14 @@ import {
   type PreviousCompiledEntry,
 } from "../lib/piano";
 import { getExams, setExamStatus, upsertCareerExam } from "../lib/esami";
+import { applySimulationOutcome } from "../lib/pianoApply";
 import { buildAnnualPlanProposal, computeRequiredReinsertions } from "../lib/polimi/annualPlan";
 import { CATALOG_2025_2026 } from "../lib/polimi/catalog/aa2025-2026";
-import { courseCfu, findCourse, getCatalog, resolveCatalog } from "../lib/polimi/catalog";
+import { CATALOG_2026_2027 } from "../lib/polimi/catalog/aa2026-2027";
+import { courseCfu, courseGroupsForTrack, findCourse, getCatalog, groupLabel, resolveCatalog } from "../lib/polimi/catalog";
+import { describeAdditionEffect, describeAddableCourses } from "../lib/polimi/courseAdvice";
+import { planningAcademicYear } from "../lib/polimi/academicYear";
+import { computeNextYearAction } from "../lib/pianoPage";
 import { estimateFinalGrade, parseGrade } from "../lib/polimi/gradeCalc";
 import { toDraftEntry } from "../lib/polimi/planModel";
 import { simulate, suggestSimulations } from "../lib/polimi/simulator";
@@ -68,6 +73,19 @@ function cfu(codes: string[]): number {
 
 function codesOf(entries: PlanEntry[]): string[] {
   return entries.map((entry) => entry.courseCode).sort();
+}
+
+/** Segnalazioni che la UI mostra come problemi del piano di quest'anno. */
+function currentPlanProblems(result: PlanValidationResult): string[] {
+  return result.issues
+    .filter((issue) => issue.scope === "current_plan" && (issue.type === "error" || issue.type === "warning"))
+    .map((issue) => issue.id);
+}
+
+function choiceOf(result: PlanValidationResult, code: string) {
+  const choice = result.structuralChoices.find((item) => item.courseCode === code);
+  assert.ok(choice, `Deve esistere lo stato della scelta obbligata per ${code}`);
+  return choice;
 }
 
 try {
@@ -112,6 +130,104 @@ try {
   }
 
   // =========================================================================
+  // 0b. Il catalogo 2026/27 cita la bozza ufficiale, non la dichiara inesistente
+  // =========================================================================
+  {
+    const catalog = CATALOG_2026_2027;
+    assert.equal(catalog.dataStatus, "to_verify", "Una bozza informativa resta un dato da riconfermare");
+
+    const draft = catalog.sources.find((source) => source.kind === "regolamento_draft");
+    assert.ok(draft, "Il catalogo deve citare la bozza ufficiale del Regolamento");
+    assert.ok(
+      draft.url?.includes("RegolamentoPublic.do") && draft.url.includes("aa=2026") && draft.url.includes("k_corso_la=531"),
+      "La fonte deve riportare l'URL del Regolamento pubblico del corso 531 per l'AA 2026"
+    );
+    assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(draft.retrievedOn ?? ""), "La fonte deve riportare la data di consultazione");
+
+    // La vecchia nota diceva che il Manifesto "non è disponibile": era falso, il documento esiste.
+    const claims = [catalog.dataStatusReason, ...catalog.dataNotes].join(" ").toLowerCase();
+    for (const falsehood of ["non disponibile", "non è ancora stato verificato", "inesistente", "non esiste"]) {
+      assert.ok(!claims.includes(falsehood), `Il catalogo non deve dichiarare "${falsehood}": la bozza è pubblicata`);
+    }
+    assert.ok(claims.includes("bozza informativa"), "Va detto che la fonte è una bozza informativa ufficiale");
+    assert.ok(
+      catalog.dataStatusReason.includes("Senato Accademico"),
+      "Va detto perché il dato è provvisorio: può cambiare fino all'approvazione del Senato Accademico"
+    );
+
+    // Struttura trascritta dalla bozza, non ereditata dall'anno precedente.
+    assert.notDeepEqual(
+      catalog.freeChoiceGroups,
+      CATALOG_2025_2026.freeChoiceGroups,
+      "Il 2026/27 ha una struttura di tabelle propria: il tirocinio non è più un gruppo a sé"
+    );
+    assert.deepEqual(
+      courseGroupsForTrack(catalog, "086369", "I3I"),
+      ["TABINF"],
+      "Nella bozza 2026/27 il tirocinio sta nella tabella di informatica per I3I"
+    );
+    assert.deepEqual(
+      courseGroupsForTrack(catalog, "086369", "I3C"),
+      ["TABGEN"],
+      "Nella bozza 2026/27 il tirocinio sta nella tabella di area generale per I3C"
+    );
+    assert.ok(
+      courseGroupsForTrack(catalog, "088804", "I3C").includes("TABGEN"),
+      "La bozza 2026/27 allarga la tabella di area generale a Meccanica"
+    );
+    assert.equal(findCourse(catalog, "088850"), undefined, "Il codice inventato di Fisica Tecnica per I3C non esiste più");
+    assert.equal(findCourse(catalog, "088805")?.cfu, 5, "Fisica Tecnica del terzo anno è quella della bozza, 5 CFU");
+
+    // La regola sulle scelte obbligate cita la formulazione letterale del Regolamento.
+    const recovery = catalog.rules.find((rule) => rule.id === "i3i_recovery");
+    assert.ok(recovery, "La regola delle scelte obbligate I3I deve esistere");
+    assert.equal(recovery.provenance, "manifesto");
+    assert.ok(
+      recovery.source.includes("Se non scelto al secondo anno deve essere scelto al terzo anno (TABREC)"),
+      "La fonte deve citare la frase del Regolamento, che parla di scelta e non di esito d'esame"
+    );
+
+    // Nessuna sigla nuda nelle etichette dei gruppi: la UI le mostra così come sono.
+    for (const [code, group] of Object.entries(catalog.electiveGroups)) {
+      assert.notEqual(group.label, code, `Il gruppo ${code} deve avere un'etichetta leggibile, non la sigla`);
+      assert.ok(group.description.length > 0, `Il gruppo ${code} deve avere una descrizione`);
+    }
+
+    // Ogni vincolo annuale dichiara la propria provenienza: l'intervallo 30-80 CFU non è
+    // nel Regolamento del corso e non va spacciato per tale.
+    for (const [key, declared] of Object.entries(catalog.annual.sources)) {
+      assert.ok(
+        ["manifesto", "operational_to_verify", "user_simulation"].includes(declared.provenance),
+        `Il vincolo annuale ${key} deve dichiarare la provenienza`
+      );
+      assert.ok(declared.source.length > 0, `Il vincolo annuale ${key} deve citare la fonte`);
+    }
+    assert.equal(
+      catalog.annual.sources.cfuRange.provenance,
+      "operational_to_verify",
+      "L'intervallo di CFU per anno viene dalle norme di presentazione, non dal Regolamento del corso"
+    );
+    assert.equal(
+      catalog.annual.sources.supernumerary.provenance,
+      "manifesto",
+      "Il limite di 32 CFU in soprannumero è attestato dal Regolamento"
+    );
+
+    for (const rule of catalog.rules) {
+      assert.ok(
+        ["manifesto", "operational_to_verify", "user_simulation"].includes(rule.provenance),
+        `La regola ${rule.id} deve dichiarare la provenienza`
+      );
+      assert.ok(rule.source.length > 0, `La regola ${rule.id} deve citare la fonte`);
+    }
+  }
+
+  // L'anno accademico da pianificare guarda avanti da luglio: è quando apre la presentazione.
+  assert.equal(planningAcademicYear("2026-08-18"), "2026/2027");
+  assert.equal(planningAcademicYear("2026-06-30"), "2025/2026");
+  assert.equal(planningAcademicYear("2026-09-01"), "2026/2027");
+
+  // =========================================================================
   // 1. Il piano è annuale: non trascina i tre anni di corso
   // =========================================================================
   const firstYear = buildDefaultScenario("I3I", 1, AA_2025);
@@ -129,6 +245,39 @@ try {
     firstYearResult.issues.some((issue) => issue.id === "rule_i3i_year3_fixed" && issue.type === "advice"),
     "I vincoli del terzo anno sono consigli, non errori, per uno studente del primo anno"
   );
+
+  // --- Criterio di accettazione: un piano del primo anno non mostra "Attenzione" per il terzo ---
+  assert.equal(
+    firstYearResult.summary.status,
+    "valid",
+    "Il piano consigliato del primo anno non è in stato di attenzione: gli obblighi del terzo anno non sono suoi"
+  );
+  assert.deepEqual(
+    currentPlanProblems(firstYearResult),
+    [],
+    "Nessun problema del piano corrente per un primo anno regolare"
+  );
+  for (const issue of firstYearResult.issues) {
+    if (issue.dueNow) continue;
+    assert.ok(
+      issue.type === "advice" || issue.type === "info",
+      `La regola non ancora esigibile ${issue.id} non può essere un errore o un avviso`
+    );
+    assert.equal(issue.scope, "future_years", `${issue.id} va nell'anteprima degli anni successivi`);
+  }
+  // In particolare il gruppo da 15 CFU del terzo anno, che prima compariva come avviso.
+  const firstYearChoice = firstYearResult.issues.find((issue) => issue.id === "rule_i3i_choice_15");
+  assert.ok(firstYearChoice, "Il gruppo da 15 CFU resta consultabile");
+  assert.equal(firstYearChoice.type, "advice", "Per un primo anno il gruppo da 15 CFU non è un avviso");
+  assert.equal(firstYearChoice.scope, "future_years");
+  assert.equal(firstYearChoice.dueByYear, 3);
+  assert.ok(
+    firstYearChoice.message.includes("All'anno 3"),
+    "Il messaggio parla al futuro, non denuncia un ammanco"
+  );
+  // E le scelte obbligate del terzo anno sono ancora "non dovute" al primo.
+  assert.equal(choiceOf(firstYearResult, "085903").state, "not_due_yet");
+  assert.equal(choiceOf(firstYearResult, "086067").state, "not_due_yet");
   assert.ok(
     firstYearResult.issues.every((issue) => !(issue.type === "error" && issue.id.startsWith("projection_"))),
     "I 180 CFU di laurea non bloccano un piano annuale"
@@ -401,6 +550,269 @@ try {
   }
 
   // =========================================================================
+  // 4b. Gli stati delle scelte obbligate, modellati e testati uno per uno
+  //
+  // Il Regolamento condiziona l'obbligo alla **scelta** ("se non scelto al secondo anno"), non
+  // all'esito dell'esame. Qui si verifica che i due casi restino distinti e producano decisioni
+  // opposte sul gruppo da 15 CFU, e che Logica e Algoritmi seguano storie indipendenti.
+  // =========================================================================
+  {
+    /** Piano del secondo anno realmente compilato, con i codici indicati. */
+    function compilePreviousYear(codes: string[]): void {
+      const previous = savePlanDraft({
+        cycleId: null, academicYear: AA_2025, studentYear: 2, track: "I3I", validationMode: "annual_submission",
+        entries: codes.map((code) => ({
+          courseCode: code,
+          courseYear: 2 as const,
+          position: "effective" as const,
+          origin: "new_frequency" as const,
+        })),
+      });
+      const ready = updateCycleStatus(previous.cycle.id as number, "ready", "auto_approved_after_deadline");
+      updateCycleStatus(ready.cycle.id as number, "polimi_compiled", "auto_approved_after_deadline");
+    }
+
+    function thirdYearFor(options: { chosenAtSecondYear: string[]; registered: string[]; notPassed: string[] }) {
+      reset();
+      for (const code of options.registered) {
+        upsertCareerExam({ code, status: "passed_registered", grade: "26", passedAt: REGISTRATION_DATE, registeredAt: REGISTRATION_DATE });
+      }
+      for (const code of options.notPassed) setExamStatus(code, "not_passed");
+      compilePreviousYear(options.chosenAtSecondYear);
+
+      const previousCompiledEntries = getPreviousCompiledEntries(null);
+      const exams = getExams();
+      const inputs = {
+        catalog: CATALOG, track: "I3I" as const, studentYear: 3 as const, academicYear: AA_2026,
+        exams, previousCompiledEntries, asOf: PLAN_SUBMISSION,
+      };
+      const proposal = buildAnnualPlanProposal(inputs, new Date().toISOString());
+      const scenario: PlanScenario = {
+        cycle: buildAnnualScenario({ track: "I3I", studentYear: 3, academicYear: AA_2026 }).cycle,
+        entries: proposal,
+      };
+      const context: PlanValidationContext = { exams, previousCompiledEntries, asOf: PLAN_SUBMISSION };
+      return { inputs, proposal, scenario, context, result: validatePlanScenario(scenario, context) };
+    }
+
+    // Il biennio "regolare" tolto Logica e Algoritmi, usato come base dei casi.
+    const SECOND_YEAR_CORE = ["052425", "085779", "085905", "099319"];
+    const FIRST_YEAR = ["082740", "082746", "082747", "051124", "082748", "054303"];
+
+    // --- Caso A: Logica SCELTA al secondo anno, esame non verbalizzato ------
+    // Deve restare un reinserimento e non consumare i 15 CFU del terzo anno.
+    {
+      const chosen = [...SECOND_YEAR_CORE, "085903", "085900"];
+      const { result, proposal } = thirdYearFor({
+        chosenAtSecondYear: chosen,
+        registered: [...FIRST_YEAR, ...SECOND_YEAR_CORE, "085900"],
+        notPassed: ["085903"],
+      });
+
+      const logica = choiceOf(result, "085903");
+      assert.equal(logica.state, "reinsert_past_frequency", "Logica scelta al secondo anno e non verbalizzata è un reinserimento");
+      assert.equal(logica.countsTowardChoiceGroup, false, "Un reinserimento non consuma i CFU del gruppo a scelta");
+      assert.equal(logica.pastGroup, "B1", "Il reinserimento resta nel blocco in cui era stato scelto");
+      assert.equal(logica.examStatus, "not_passed", "Lo stato d'esame resta un'informazione separata dallo stato della scelta");
+
+      const entry = proposal.find((item) => item.courseCode === "085903");
+      assert.ok(entry, "Logica va reinserita nel piano del terzo anno");
+      assert.equal(entry.courseYear, 2, "Il reinserimento usa l'offerta dell'anno in cui era stata scelta");
+      assert.equal(entry.isNewFrequency, false, "Un reinserimento non è una nuova frequenza");
+      assert.equal(entry.feeCounted, false, "Un reinserimento è già stato pagato");
+
+      const choiceFinding = result.ruleFindings.find((item) => item.ruleId === "i3i_choice_15");
+      assert.ok(choiceFinding, "Il gruppo da 15 CFU va valutato");
+      assert.ok(
+        !choiceFinding.reserved.includes("085903"),
+        "Logica reinserita non deve comparire fra i CFU contati nel gruppo a scelta"
+      );
+
+      // Il controllo decisivo: i 15 CFU vanno composti interamente altrove.
+      const countedCfu = choiceFinding.reserved.reduce((total, code) => total + courseCfu(CATALOG, code), 0);
+      assert.equal(countedCfu, 15, "Il gruppo si compone di 15 CFU di altre scelte, senza contare Logica");
+      assert.ok(choiceFinding.satisfied, "Con 15 CFU di scelte il gruppo è completo");
+      assert.ok(
+        !currentPlanProblems(result).includes("rule_i3i_choice_15"),
+        "Il gruppo a scelta completo non genera problemi"
+      );
+    }
+
+    // --- Caso B: Logica MAI SCELTA al secondo anno -------------------------
+    // Deve diventare una scelta della tabella dei recuperi e concorrere ai 15 CFU.
+    {
+      const chosen = [...SECOND_YEAR_CORE, "093506"]; // ha scelto Elettromagnetismo e Campi
+      const { result, proposal } = thirdYearFor({
+        chosenAtSecondYear: chosen,
+        registered: [...FIRST_YEAR, ...SECOND_YEAR_CORE, "093506"],
+        notPassed: [],
+      });
+
+      const logica = choiceOf(result, "085903");
+      assert.equal(logica.state, "choose_in_recovery_table", "Logica mai scelta va scelta ora nella tabella dei recuperi");
+      assert.equal(logica.countsTowardChoiceGroup, true, "Una scelta nella tabella dei recuperi concorre ai 15 CFU");
+      assert.equal(logica.recoveryGroup, "TABREC");
+      assert.equal(logica.pastGroup, null, "Non c'è nessun blocco storico da cui reinserirla");
+      assert.equal(logica.inferredFromMissingHistory, false, "Lo storico esiste: non è una deduzione");
+
+      const entry = proposal.find((item) => item.courseCode === "085903");
+      assert.ok(entry, "Logica non scelta prima entra nel piano del terzo anno");
+      assert.equal(entry.courseYear, 3, "Usa l'offerta del terzo anno, quella della tabella dei recuperi");
+      assert.equal(entry.isNewFrequency, true, "Una scelta mai fatta prima è una nuova frequenza");
+
+      const choiceFinding = result.ruleFindings.find((item) => item.ruleId === "i3i_choice_15");
+      assert.ok(choiceFinding, "Il gruppo da 15 CFU va valutato");
+      assert.ok(choiceFinding.reserved.includes("085903"), "Logica scelta in tabella di recupero conta nei 15 CFU");
+      assert.ok(choiceFinding.reserved.includes("086067"), "Anche Algoritmi, mai scelto, conta nei 15 CFU");
+      assert.equal(
+        choiceFinding.reserved.reduce((total, code) => total + courseCfu(CATALOG, code), 0),
+        15,
+        "Logica (5) e Algoritmi (10) saturano da soli il gruppo da 15 CFU"
+      );
+      assert.ok(choiceFinding.satisfied);
+    }
+
+    // --- Caso C: Logica e Algoritmi con casistiche indipendenti ------------
+    // Logica scelta e non superata, Algoritmi mai scelto: due stati diversi nello stesso piano.
+    {
+      const chosen = [...SECOND_YEAR_CORE, "085903", "085900", "099322", "054440"];
+      const { result, proposal } = thirdYearFor({
+        chosenAtSecondYear: chosen,
+        registered: [...FIRST_YEAR, ...SECOND_YEAR_CORE, "085900", "099322", "054440"],
+        notPassed: ["085903"],
+      });
+
+      const logica = choiceOf(result, "085903");
+      const api = choiceOf(result, "086067");
+      assert.equal(logica.state, "reinsert_past_frequency", "Logica era stata scelta: reinserimento");
+      assert.equal(api.state, "choose_in_recovery_table", "Algoritmi non era stato scelto: scelta in tabella di recupero");
+      assert.notEqual(logica.state, api.state, "I due insegnamenti seguono storie indipendenti");
+      assert.equal(logica.countsTowardChoiceGroup, false);
+      assert.equal(api.countsTowardChoiceGroup, true);
+
+      const logicaEntry = proposal.find((item) => item.courseCode === "085903");
+      const apiEntry = proposal.find((item) => item.courseCode === "086067");
+      assert.equal(logicaEntry?.courseYear, 2, "Il reinserimento tiene l'anno di offerta originale");
+      assert.equal(logicaEntry?.isNewFrequency, false);
+      assert.equal(apiEntry?.courseYear, 3, "La scelta in tabella di recupero usa l'offerta del terzo anno");
+      assert.equal(apiEntry?.isNewFrequency, true);
+
+      const choiceFinding = result.ruleFindings.find((item) => item.ruleId === "i3i_choice_15");
+      assert.ok(choiceFinding, "Il gruppo da 15 CFU va valutato");
+      assert.ok(choiceFinding.reserved.includes("086067"), "Solo Algoritmi entra nel conteggio dei 15 CFU");
+      assert.ok(!choiceFinding.reserved.includes("085903"), "Logica reinserita resta fuori dal conteggio");
+      const countedCfu = choiceFinding.reserved.reduce((total, code) => total + courseCfu(CATALOG, code), 0);
+      assert.equal(countedCfu, 15, "Algoritmi (10) più 5 CFU di scelta libera completano il gruppo");
+
+      // Il progetto di Algoritmi non viene inventato per una scelta in tabella di recupero.
+      assert.ok(!codesOf(proposal).includes("052509"), "Il modulo di progetto non segue la scelta in tabella di recupero");
+      const linked = result.issues.find((issue) => issue.id === "rule_final_exam_modules");
+      assert.equal(linked?.type, "warning", "Il modulo di progetto è una verifica, non un obbligo inventato");
+      assert.equal(linked.provenance, "operational_to_verify");
+    }
+
+    // --- Caso C-bis: nessun blocco progettuale scelto al secondo anno -------
+    // Il Regolamento offre due strade per lo stesso obbligo: il blocco del secondo anno oppure la
+    // tabella di recupero al terzo. Chi prende la seconda ha adempiuto, e la tabella del terzo anno
+    // elenca l'insegnamento senza il modulo di progetto da 1 CFU: pretenderlo sarebbe inventato.
+    {
+      const chosen = [...SECOND_YEAR_CORE, "085903", "085900"]; // nessuna scelta del blocco progettuale
+      const { result, proposal } = thirdYearFor({
+        chosenAtSecondYear: chosen,
+        registered: [...FIRST_YEAR, ...SECOND_YEAR_CORE, "085900"],
+        notPassed: ["085903"],
+      });
+
+      assert.equal(choiceOf(result, "086067").state, "choose_in_recovery_table");
+      assert.ok(codesOf(proposal).includes("086067"), "Algoritmi entra nel piano dalla tabella di recupero");
+      assert.ok(!codesOf(proposal).includes("052509"), "Il modulo di progetto non viene aggiunto");
+
+      const b3 = result.ruleFindings.find((item) => item.ruleId === "it1_year2_b3");
+      assert.ok(b3, "Il blocco progettuale del secondo anno va comunque valutato");
+      assert.ok(b3.satisfied, "Sceglierlo nella tabella di recupero assolve il blocco del secondo anno");
+      assert.equal(b3.severityHint, "advice", "Un obbligo assolto per via alternativa non è un errore");
+      assert.equal(b3.provenance, "operational_to_verify", "Come si completino i CFU residui del blocco non è documentato");
+      assert.ok(
+        b3.detail.includes("tabella di recupero"),
+        "Va spiegato perché il blocco risulta assolto"
+      );
+      assert.ok(
+        b3.detail.includes("Prova Finale (Progetto di Algoritmi e Strutture Dati)"),
+        "Va nominato il modulo che le tabelle del terzo anno non elencano"
+      );
+
+      assert.ok(
+        !currentPlanProblems(result).includes("rule_it1_year2_b3"),
+        "Il blocco assolto non deve comparire fra i problemi del piano corrente"
+      );
+      assert.deepEqual(
+        currentPlanProblems(result).filter((id) => id !== "rule_final_exam_modules"),
+        [],
+        "Nessun altro problema bloccante in questo scenario"
+      );
+    }
+
+    // --- Caso D: verbalizzato prima della presentazione --------------------
+    {
+      reset();
+      for (const code of [...FIRST_YEAR, ...SECOND_YEAR_CORE, "085900", "085903", "086067", "052509"]) {
+        upsertCareerExam({ code, status: "passed_registered", grade: "27", passedAt: REGISTRATION_DATE, registeredAt: REGISTRATION_DATE });
+      }
+      compilePreviousYear([...SECOND_YEAR_CORE, "085903", "085900", "086067", "052509"]);
+      const exams = getExams();
+      const previousCompiledEntries = getPreviousCompiledEntries(null);
+      const scenario = buildAnnualScenario({
+        track: "I3I", studentYear: 3, academicYear: AA_2026, exams, previousCompiledEntries, asOf: PLAN_SUBMISSION,
+      });
+      const result = validatePlanScenario(scenario, { exams, previousCompiledEntries, asOf: PLAN_SUBMISSION });
+
+      assert.equal(choiceOf(result, "085903").state, "closed", "Verbalizzato prima della presentazione: nulla da fare");
+      assert.equal(choiceOf(result, "086067").state, "closed");
+      assert.ok(
+        !codesOf(scenario.entries).includes("085903"),
+        "Un esame verbalizzato non viene riproposto, né come reinserimento né come nuova scelta"
+      );
+      const choiceFinding = result.ruleFindings.find((item) => item.ruleId === "i3i_choice_15");
+      assert.ok(
+        !choiceFinding?.reserved.includes("085903"),
+        "Logica verbalizzata in un contesto ambiguo non viene attribuita d'ufficio al gruppo da 15 CFU"
+      );
+    }
+
+    // --- Caso E: nessuno storico in archivio: lo stato è dedotto e va dichiarato ---
+    {
+      reset();
+      for (const code of FIRST_YEAR) {
+        upsertCareerExam({ code, status: "passed_registered", grade: "24", passedAt: REGISTRATION_DATE, registeredAt: REGISTRATION_DATE });
+      }
+      const exams = getExams();
+      const scenario = buildAnnualScenario({
+        track: "I3I", studentYear: 3, academicYear: AA_2026, exams, previousCompiledEntries: [], asOf: PLAN_SUBMISSION,
+      });
+      const result = validatePlanScenario(scenario, { exams, previousCompiledEntries: [], asOf: PLAN_SUBMISSION });
+
+      const logica = choiceOf(result, "085903");
+      assert.equal(logica.state, "choose_in_recovery_table");
+      assert.equal(logica.inferredFromMissingHistory, true, "Senza storico, \"non scelto\" è una deduzione");
+      const issue = result.issues.find((item) => item.id === "rule_i3i_recovery");
+      assert.equal(issue?.type, "warning", "Una deduzione non è un errore bloccante");
+      assert.equal(issue.provenance, "operational_to_verify", "Va dichiarata come cosa da verificare");
+      assert.ok(issue.message.includes("deduzione"), "Il messaggio dice all'utente che si tratta di una deduzione");
+    }
+
+    // --- Caso F: il conteggio del gruppo guarda il contesto, non il codice ---
+    // Lo stesso codice può stare in due tabelle: conta solo quella in cui è stato scelto.
+    {
+      const groups = courseGroupsForTrack(CATALOG, "085903", "I3I");
+      assert.deepEqual(groups.sort(), ["B1", "TABREC"], "Logica appare in due gruppi diversi per I3I");
+      assert.ok(
+        groupLabel(CATALOG, "TABREC")!.includes("recuperi"),
+        "La UI riceve un'etichetta leggibile, non la sigla nuda"
+      );
+    }
+  }
+
+  // =========================================================================
   // 5. Il gruppo da 15 CFU non deve essere completato nella finestra annuale
   // =========================================================================
   {
@@ -464,6 +876,107 @@ try {
       codesOf(getPlanScenario(base.cycle.id as number)?.entries ?? []),
       codesOf(base.entries),
       "La simulazione di completamento non salva nulla"
+    );
+  }
+
+  // =========================================================================
+  // 5b. Le spiegazioni mostrate prima di aggiungere un insegnamento
+  // =========================================================================
+  {
+    const { exams, previousCompiledEntries } = annualInputs({ apiRegistered: false });
+    const base = createAnnualDraft(AA_2026, 3, "I3I");
+    const context: PlanValidationContext = { exams, previousCompiledEntries, asOf: PLAN_SUBMISSION };
+    const result = validatePlanScenario(base, context);
+
+    const described = describeAddableCourses({
+      catalog: getCatalog(AA_2026),
+      track: "I3I",
+      studentYear: 3,
+      inPlan: new Set(),
+      registered: new Set(),
+      reinsertionCodes: new Set(result.requiredReinsertions.map((item) => item.courseCode)),
+      structuralChoices: result.structuralChoices,
+    });
+
+    assert.ok(described.length > 0, "Il catalogo deve produrre insegnamenti descritti");
+
+    // Ogni descrizione risponde alle domande richieste prima dell'aggiunta.
+    for (const course of described) {
+      const labels = course.facts.map((fact) => fact.label);
+      for (const required of ["Semestre", "CFU", "Gruppo o regola", "Conta nel gruppo a scelta"]) {
+        assert.ok(labels.includes(required), `La scheda di ${course.code} deve dire "${required}"`);
+      }
+      assert.ok(course.summary.length > 0, `${course.code} deve avere un riassunto leggibile`);
+      if (course.group) {
+        assert.ok(
+          !/^TAB[A-Z]*$/.test(course.group) && course.group.length > 8,
+          `Il gruppo di ${course.code} va mostrato con un nome leggibile, non con la sola sigla: "${course.group}"`
+        );
+      }
+    }
+
+    // Un insegnamento della tabella di informatica conta nel gruppo da 15 CFU; uno obbligatorio no.
+    const web = described.find((course) => course.code === "085879");
+    assert.ok(web, "Tecnologie Informatiche per il Web deve essere proponibile al terzo anno I3I");
+    assert.equal(web.countsTowardChoiceGroup, true);
+    assert.equal(web.bucket, "choice_group");
+    assert.equal(web.semester, 2);
+    assert.ok(
+      web.facts.some((fact) => fact.label === "Conta nel gruppo a scelta" && fact.value.startsWith("Sì")),
+      "Va detto esplicitamente che occupa parte dei CFU a scelta"
+    );
+
+    // Il numero chiuso è una limitazione dichiarata, non una nota nascosta nella descrizione.
+    const databases = described.find((course) => course.code === "063579");
+    assert.ok(databases, "Databases deve essere proponibile");
+    assert.ok(
+      databases.limitations.some((limitation) => limitation.includes("numero chiuso")),
+      "Il numero chiuso va dichiarato fra le limitazioni"
+    );
+
+    // Un corso progettuale dichiara il modulo collegato che verrà aggiunto insieme.
+    const reti = describeAddableCourses({
+      catalog: getCatalog(AA_2026),
+      track: "I3I",
+      studentYear: 3,
+      inPlan: new Set(),
+      registered: new Set(),
+      reinsertionCodes: new Set(),
+      structuralChoices: result.structuralChoices,
+    }).find((course) => course.code === "085877");
+    assert.ok(reti?.linkedModule, "Reti Logiche deve dichiarare il progetto collegato");
+    assert.equal(reti.linkedModule.code, "054441");
+    assert.ok(
+      reti.facts.some((fact) => fact.label === "Progetto collegato"),
+      "Il progetto collegato compare fra i fatti mostrati prima dell'aggiunta"
+    );
+
+    // Feedback dopo l'aggiunta: dice cosa è cambiato, in una riga.
+    const shorter: PlanScenario = { ...base, entries: base.entries.filter((entry) => entry.courseCode !== "085901") };
+    const before = validatePlanScenario(shorter, context);
+    const after = validatePlanScenario(base, context);
+    const feedback = describeAdditionEffect(getCatalog(AA_2026), "085901", before, after);
+    assert.ok(feedback.headline.includes("Automazione Industriale"), "Il feedback nomina l'insegnamento aggiunto");
+    assert.ok(feedback.headline.includes("+5 CFU"), "Il feedback quantifica l'effetto sulle nuove frequenze");
+    assert.ok(
+      feedback.details.some((detail) => detail.includes("Hai coperto")),
+      "Il feedback dice quale regola si è chiusa"
+    );
+
+    // Aggiungere un corso fuori dalle tabelle a scelta non tocca il gruppo da 15 CFU.
+    const withSupernumerary: PlanScenario = {
+      ...base,
+      entries: [...base.entries, {
+        ...base.entries[0], id: null, courseCode: "088877", courseYear: 3, semester: 1,
+        origin: "free_choice", isNewFrequency: true, feeCounted: true, position: "supernumerary",
+      }],
+    };
+    const supernumeraryFeedback = describeAdditionEffect(
+      getCatalog(AA_2026), "088877", after, validatePlanScenario(withSupernumerary, context)
+    );
+    assert.ok(
+      supernumeraryFeedback.details.some((detail) => detail.includes("non modifica i CFU del gruppo a scelta")),
+      "Va detto quando l'aggiunta non tocca il gruppo a scelta"
     );
   }
 
@@ -553,9 +1066,39 @@ try {
     );
     const keptResult = validatePlanScenario(revision, afterLogica);
     assert.deepEqual(errorsOf(keptResult), [], "Il piano con Logica ancora dentro resta valido");
+    const recovered = keptResult.issues.find((issue) => issue.id === "recovered_085903");
+    assert.ok(recovered, "Va spiegato che Logica è stata verbalizzata dopo la presentazione");
+    assert.equal(recovered.type, "info", "Una verbalizzazione tardiva chiude la carriera: non è un problema del piano");
+    assert.equal(recovered.scope, "current_plan", "Riguarda comunque il piano di quest'anno");
     assert.ok(
-      keptResult.issues.some((issue) => issue.id === "recovered_085903"),
-      "Va spiegato che Logica è stata verbalizzata dopo la presentazione"
+      recovered.message.includes("non conta più per la contribuzione"),
+      "Va detto l'effetto concreto: l'insegnamento esce dal conteggio per le tasse"
+    );
+    assert.ok(
+      recovered.message.includes("secondo semestre"),
+      "Va detto come si comporta nella revisione semestrale"
+    );
+    // Alla data di presentazione la verbalizzazione non era ancora arrivata: lo stato della
+    // scelta resta quello di allora, ed è giusto così. Il piano presentato non si riscrive a
+    // posteriori; è la revisione semestrale a doverci convivere.
+    assert.equal(
+      choiceOf(keptResult, "085903").state,
+      "reinsert_past_frequency",
+      "Valutato alla data di presentazione, il reinserimento era dovuto"
+    );
+    // Valutando la stessa carriera a una data successiva, l'attività risulta chiusa.
+    const laterView = validatePlanScenario(revision, {
+      ...afterLogica,
+      asOf: addCalendarDays(PLAN_SUBMISSION, 60),
+    });
+    assert.equal(
+      choiceOf(laterView, "085903").state,
+      "closed",
+      "Dopo la verbalizzazione, e valutando a una data successiva, la scelta obbligata è chiusa"
+    );
+    assert.ok(
+      !laterView.requiredReinsertions.some((item) => item.courseCode === "085903"),
+      "A quella data non è più un reinserimento dovuto"
     );
     assert.equal(
       keptResult.summary.registeredCareerCfu,
@@ -680,6 +1223,114 @@ try {
     const revision = createSecondSemesterRevision(compiled.cycle.id as number);
     assert.throws(() => updateCycleStatus(revision.cycle.id as number, "polimi_compiled"), /Transizione/);
     assert.equal(getCurrentPlanScenario().cycle.id, revision.cycle.id, "Lo scenario attivo è esplicito");
+  }
+
+  // =========================================================================
+  // 8b. Applicazione di uno scenario: una sola transazione
+  // =========================================================================
+  {
+    const { exams, previousCompiledEntries } = annualInputs({ apiRegistered: false });
+    const draft = createAnnualDraft(AA_2026, 3, "I3I");
+    const context: PlanValidationContext = { exams, previousCompiledEntries, asOf: PLAN_SUBMISSION };
+    const suggestions = suggestSimulations(draft, context);
+    const passBefore = suggestions.find((item) => item.id === "pass_before_086067");
+    assert.ok(passBefore, "Lo scenario su API deve esistere");
+
+    const before = getExams();
+    assert.notEqual(before["086067"]?.status, "passed_registered");
+
+    const applied = applySimulationOutcome({
+      outcomes: passBefore.assumptions.map((assumption) => ({
+        code: assumption.courseCode,
+        status: assumption.outcome === "registered" ? ("passed_registered" as const) : ("not_passed" as const),
+      })),
+      draft: { ...payload(draft), entries: draft.entries.map(toDraftEntry) },
+    });
+
+    assert.equal(applied.exams["086067"].status, "passed_registered", "L'esito ipotizzato viene scritto in carriera");
+    assert.ok(applied.scenario.cycle.id, "La bozza viene salvata nella stessa operazione");
+    assert.deepEqual(
+      codesOf(getPlanScenario(applied.scenario.cycle.id as number)?.entries ?? []),
+      codesOf(applied.scenario.entries),
+      "Il piano restituito è quello effettivamente persistito"
+    );
+    // Il risultato torna già letto: al client non serve un giro aggiuntivo per rileggere lo stato.
+    assert.deepEqual(applied.exams, getExams(), "Gli esami restituiti sono quelli in archivio");
+    const plannedCode = applied.scenario.entries.find((entry) => !before[entry.courseCode])?.courseCode;
+    assert.ok(plannedCode, "La bozza contiene anche corsi diversi dall'esito simulato");
+    assert.equal(applied.exams[plannedCode].status, "planned", "La risposta include gli esami planned creati dalla sincronizzazione");
+
+    const cyclesBeforeFailures = getDb().prepare("SELECT COUNT(*) AS count FROM study_plan_cycles").get() as { count: number };
+    const examsBeforeFailures = getExams();
+    assert.throws(
+      () => applySimulationOutcome({ outcomes: [{ code: "085901", status: "passed_registered" }], draft: null as never }),
+      /bozza.*obbligatoria/i,
+      "Senza bozza il simulatore deve fermarsi prima di scrivere gli esiti"
+    );
+    assert.deepEqual(getExams(), examsBeforeFailures, "Una bozza assente non modifica la carriera");
+    assert.equal(
+      (getDb().prepare("SELECT COUNT(*) AS count FROM study_plan_cycles").get() as { count: number }).count,
+      cyclesBeforeFailures.count,
+      "Una bozza assente non modifica il piano"
+    );
+
+    // Se la bozza è invalida, nulla viene scritto: né carriera né piano.
+    const carriera = getExams();
+    assert.throws(
+      () => applySimulationOutcome({
+        outcomes: [{ code: "085901", status: "passed_registered" }],
+        draft: { ...payload(draft), entries: [{ courseCode: "CODICE-INESISTENTE", courseYear: 3, position: "effective", origin: "new_frequency" }] },
+      }),
+      /sconosciuto/,
+      "Una bozza con un codice inesistente deve fallire"
+    );
+    assert.deepEqual(
+      getExams(),
+      carriera,
+      "Se il salvataggio del piano fallisce, gli esiti di carriera non restano scritti a metà"
+    );
+
+    // Un errore dopo il primo upsert deve far tornare indietro anche quello già eseguito.
+    assert.throws(
+      () => applySimulationOutcome({
+        outcomes: [
+          { code: "085901", status: "passed_registered" },
+          { code: "085902", status: "status-impossibile" as never },
+        ],
+        draft: payload(draft),
+      }),
+      /Stato esame non valido/,
+      "Un errore intermedio deve propagarsi"
+    );
+    assert.deepEqual(getExams(), carriera, "Un errore intermedio non lascia cambiamenti alla carriera");
+  }
+
+  // =========================================================================
+  // 8c. Passaggio d'anno: azione coerente con il target, anche dallo storico
+  // =========================================================================
+  {
+    const scenario = buildDefaultScenario("I3I", 2, AA_2025);
+    const compiled: PlanScenario = {
+      ...scenario,
+      cycle: { ...scenario.cycle, id: 41, academicYear: AA_2025, status: "polimi_compiled", isVirtual: false },
+    };
+    const currentTarget = AA_2026;
+    const immediate = computeNextYearAction([compiled.cycle], compiled, currentTarget);
+    assert.deepEqual(immediate && { kind: immediate.kind, academicYear: immediate.academicYear }, {
+      kind: "continue_from_compiled", academicYear: currentTarget,
+    }, "Da uno scenario attivo compilato l'etichetta coincide con l'anno che verrà creato");
+
+    const existing = { ...compiled.cycle, id: 42, academicYear: currentTarget, status: "draft" as const, archivedAt: null };
+    const oldHistory: PlanScenario = { ...compiled, cycle: { ...compiled.cycle, academicYear: "2024/2025", studentYear: 1 } };
+    const openExisting = computeNextYearAction([oldHistory.cycle, existing], oldHistory, currentTarget);
+    assert.deepEqual(openExisting && { kind: openExisting.kind, cycleId: "cycleId" in openExisting ? openExisting.cycleId : null }, {
+      kind: "open_existing", cycleId: 42,
+    }, "Consultare uno storico vecchio apre il target esistente invece di duplicare un anno intermedio");
+
+    const skippedYears = computeNextYearAction([oldHistory.cycle], oldHistory, currentTarget);
+    assert.deepEqual(skippedYears && { kind: skippedYears.kind, academicYear: skippedYears.academicYear }, {
+      kind: "create_draft", academicYear: currentTarget,
+    }, "Dopo un salto di più anni si crea il target, non l'anno successivo allo storico");
   }
 
   // =========================================================================
