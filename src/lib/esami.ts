@@ -88,6 +88,48 @@ export function markExamRegistered(code: string, registeredAt: string | null = n
   scaleRecoveredEntriesForRegisteredExam(normalizedCode);
 }
 
+/**
+ * Inserimento/aggiornamento rapido di una voce di carriera, anche per corsi che non sono
+ * (ancora) in nessun piano: la carriera è la fonte di verità di "cosa è già verbalizzato".
+ */
+export function upsertCareerExam(input: {
+  code: string;
+  status: ExamStatus;
+  grade?: string | null;
+  passedAt?: string | null;
+  registeredAt?: string | null;
+}): void {
+  setExamStatus(input.code, input.status, { passedAt: input.passedAt, registeredAt: input.registeredAt });
+  if (input.grade !== undefined && (input.status === "passed_registered" || input.status === "passed_unregistered")) {
+    setExamGrade(input.code, input.grade);
+    if (input.status === "passed_registered") {
+      markExamRegistered(input.code, input.registeredAt ?? null);
+    }
+  }
+}
+
+/** Import manuale di più voci di carriera in una sola transazione. */
+export function importCareerExams(rows: {
+  code: string;
+  status: ExamStatus;
+  grade?: string | null;
+  passedAt?: string | null;
+  registeredAt?: string | null;
+}[]): number {
+  if (!Array.isArray(rows)) throw new Error("Formato import non valido.");
+  if (rows.length > 200) throw new Error("Import troppo grande: massimo 200 esami per volta.");
+  const run = getDb().transaction(() => {
+    for (const row of rows) upsertCareerExam(row);
+  });
+  run();
+  return rows.length;
+}
+
+/** Rimuove una voce di carriera inserita per errore. Non tocca i piani salvati. */
+export function deleteCareerExam(code: string): void {
+  getDb().prepare("DELETE FROM exams WHERE course_code = ?").run(validateCode(code));
+}
+
 export function syncExamsWithPlan(courseCodes: string[]): void {
   const db = getDb();
   const existing = getExams();

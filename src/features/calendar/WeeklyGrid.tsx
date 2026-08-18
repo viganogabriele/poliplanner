@@ -7,7 +7,7 @@
 // Data comes from the schedule rows passed in by the page.
 // No interactivity needed → Server Component.
 
-import { WEEKDAY_LABELS, WORKWEEK } from "@/lib/dates";
+import { formatItalianDateRange, WEEKDAY_LABELS, WORKWEEK } from "@/lib/dates";
 import { LESSON_MODE_LABELS, type ScheduleRow } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 
@@ -24,20 +24,18 @@ export default function WeeklyGrid({ rows }: WeeklyGridProps) {
     if (list) list.push(row);
   }
 
-  return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
-      {WORKWEEK.map((wd) => {
+  const renderDay = (wd: number) => {
         const dayRows = byWeekday.get(wd) ?? [];
         return (
           <div
             key={wd}
-            className="flex min-h-44 flex-col gap-2 rounded-card border border-border bg-surface-muted/60 p-3 shadow-inset"
+            className="flex flex-col gap-2 rounded-card border border-border bg-surface-muted/60 p-3 shadow-inset"
           >
             <div className="text-xs font-semibold uppercase text-muted">
               {WEEKDAY_LABELS[wd]}
             </div>
             {dayRows.length === 0 ? (
-              <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border text-xs text-disabled">
+              <div className="rounded-lg border border-dashed border-border px-2 py-3 text-center text-xs text-disabled">
                 Nessuna lezione
               </div>
             ) : (
@@ -49,9 +47,9 @@ export default function WeeklyGrid({ rows }: WeeklyGridProps) {
                   <div className="font-medium leading-snug text-primary">
                     {row.subject}
                   </div>
-                  {row.course_code && <div className="mt-1 font-mono text-muted">{row.course_code}</div>}
+                  {row.course_code && <div className="mt-1 text-[11px] text-muted">Codice {row.course_code}</div>}
                   <div className="mt-1 text-muted">
-                    {row.start_date} → {row.end_date}
+                    {formatItalianDateRange(row.start_date, row.end_date)}
                   </div>
                   <Badge
                     variant={row.mode === "presenza" ? "active" : "warning"}
@@ -64,7 +62,16 @@ export default function WeeklyGrid({ rows }: WeeklyGridProps) {
             )}
           </div>
         );
-      })}
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {WORKWEEK.slice(0, 5).map(renderDay)}
+      </div>
+      <div className="grid grid-cols-1 gap-3 border-t border-border/70 pt-3 sm:grid-cols-2 lg:ml-auto lg:max-w-[40%]">
+        {WORKWEEK.slice(5).map(renderDay)}
+      </div>
     </div>
   );
 }

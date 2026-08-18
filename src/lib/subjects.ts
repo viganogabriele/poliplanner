@@ -1,6 +1,7 @@
 import { getDb } from "./db";
 import { today } from "./dates";
-import { COURSES } from "./polimi/courses";
+import { getCatalog, findCourse, type Catalog } from "./polimi/catalog";
+import { getCurrentPlanScenario } from "./piano";
 import { getExams } from "./esami";
 import type { ExamRecord } from "./esami";
 import type { LessonMode } from "./types";
@@ -45,17 +46,38 @@ export function normalizeSubjectName(value: string): string {
     .trim();
 }
 
-function findRelatedCourse(subjectName: string) {
+/** Il catalogo di riferimento è quello dell'anno accademico del piano attivo. */
+function activeCatalog() {
+  return getCatalog(getCurrentPlanScenario().cycle.academicYear);
+}
+
+function findRelatedCourse(catalog: Catalog, subjectName: string) {
   const normalizedSubject = normalizeSubjectName(subjectName);
   if (!normalizedSubject) return undefined;
 
-  return COURSES.find((course) => {
+  return catalog.courses.find((course) => {
     if (course.isLinkedExam) return false;
     const normalizedCourse = normalizeSubjectName(course.name);
     return normalizedCourse === normalizedSubject
       || normalizedCourse.startsWith(`${normalizedSubject} `)
       || normalizedSubject.startsWith(`${normalizedCourse} `);
   });
+}
+
+/** Rejects explicit calendar codes whose catalogue name does not describe the calendar subject. */
+export function subjectMatchesCourse(subjectName: string, courseName: string): boolean {
+  const subject = normalizeSubjectName(subjectName);
+  const course = normalizeSubjectName(courseName);
+  if (!subject || !course) return false;
+  return course === subject || course.startsWith(`${subject} `) || subject.startsWith(`${course} `);
+}
+
+export function resolveSubjectCourse(catalog: Catalog, subjectName: string, explicitCode?: string) {
+  if (explicitCode) {
+    const course = findCourse(catalog, explicitCode);
+    return course && subjectMatchesCourse(subjectName, course.name) ? course : undefined;
+  }
+  return findRelatedCourse(catalog, subjectName);
 }
 
 export function getSubjectData(subjectName: string): SubjectData | null {
@@ -94,9 +116,7 @@ export function getSubjectData(subjectName: string): SubjectData | null {
     WHERE subject = ? AND course_code IS NOT NULL
     ORDER BY id LIMIT 1
   `).get(subjectName) as { course_code: string } | undefined;
-  const relatedCourse = explicitCode
-    ? COURSES.find((course) => course.code === explicitCode.course_code)
-    : findRelatedCourse(subjectName);
+  const relatedCourse = resolveSubjectCourse(activeCatalog(), subjectName, explicitCode?.course_code);
   const exams = relatedCourse ? getExams() : undefined;
 
   return {

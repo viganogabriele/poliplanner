@@ -1,47 +1,44 @@
-import { getCourse } from "./courses";
+import { DEFAULT_ACADEMIC_YEAR, findCourse, getCatalog } from "./catalog";
 import { GRADE_LAUDE } from "./constraints";
-import type { ExamsMap } from "@/lib/esami";
-import type { PlanEntry } from "@/lib/piano";
+import type { CareerExamsMap } from "./career";
 
 export function parseGrade(grade: string): number | null {
   if (grade === GRADE_LAUDE || grade === "30L") return 30;
-  const n = Number(grade);
-  return isNaN(n) ? null : n;
+  const value = Number(grade);
+  return Number.isNaN(value) ? null : value;
 }
 
-export function displayGrade(numericGrade: number): string {
-  if (numericGrade === 31) return "30L";
-  return String(numericGrade);
-}
-
-export function weightedAverage(exams: ExamsMap, entries: PlanEntry[]): { average: number | null; passedCFU: number } {
+/**
+ * Media pesata e CFU acquisiti sull'**intera carriera**: contano solo gli esami verbalizzati,
+ * perché un superamento non verbalizzato non esiste per PoliMi.
+ */
+export function careerAverage(
+  exams: CareerExamsMap,
+  academicYear: string = DEFAULT_ACADEMIC_YEAR
+): { average: number | null; registeredCfu: number; registeredCount: number } {
+  const catalog = getCatalog(academicYear);
   let weightedSum = 0;
-  let gradedCFU = 0;
-  let passedCFU = 0;
+  let gradedCfu = 0;
+  let registeredCfu = 0;
+  let registeredCount = 0;
 
-  entries.forEach((entry) => {
-    if (entry.position !== "effective") return;
-    const exam = exams[entry.courseCode];
-    if (exam?.status !== "passed_registered") return;
-    const course = getCourse(entry.courseCode);
-    if (!course) return;
-    if (course.isLinkedExam) return;
-
-    passedCFU += course.cfu;
-
-    if (course.type.includes("T") || course.type.includes("V")) return;
-    if (!exam.grade) return;
-
-    const numGrade = parseGrade(exam.grade);
-    if (numGrade === null) return;
-
-    weightedSum += numGrade * course.cfu;
-    gradedCFU += course.cfu;
-  });
+  for (const [code, exam] of Object.entries(exams)) {
+    if (exam.status !== "passed_registered") continue;
+    const course = findCourse(catalog, code);
+    if (!course) continue;
+    registeredCfu += course.cfu;
+    registeredCount += 1;
+    if (course.type.includes("T") || course.type.includes("V")) continue;
+    const grade = exam.grade ? parseGrade(exam.grade) : null;
+    if (grade === null) continue;
+    weightedSum += grade * course.cfu;
+    gradedCfu += course.cfu;
+  }
 
   return {
-    average: gradedCFU > 0 ? Math.round((weightedSum / gradedCFU) * 100) / 100 : null,
-    passedCFU,
+    average: gradedCfu > 0 ? Math.round((weightedSum / gradedCfu) * 100) / 100 : null,
+    registeredCfu,
+    registeredCount,
   };
 }
 

@@ -1,81 +1,37 @@
 import { getDb } from "./db";
 import { getExams } from "./esami";
-import { getCourse, getCourseOffering } from "./polimi/courses";
-import { planEntriesToPiano, toDraftEntry } from "./polimi/planTransforms";
+import { today } from "./dates";
+import { buildAnnualPlanProposal } from "./polimi/annualPlan";
+import { findCourse, findOffering, getCatalog, offeringSemester } from "./polimi/catalog";
+import { isReinsertion, toDraftEntry } from "./polimi/planModel";
 import {
-  ACADEMIC_YEAR,
   DEFAULT_TRACK,
   type ApprovalStatus,
-  type EntryOrigin,
-  type EntryPosition,
   type PlanStatus,
   type PlanValidationMode,
   type Track,
 } from "./polimi/constraints";
+import { DEFAULT_ACADEMIC_YEAR } from "./polimi/catalog";
+import { assertAcademicYear, incrementAcademicYear } from "./polimi/academicYear";
+import type {
+  PlanCycle,
+  PlanDraftEntry,
+  PlanDraftPayload,
+  PlanEntry,
+  PlanEntryKind,
+  PlanScenario,
+  PreviousCompiledEntry,
+} from "./polimi/planModel";
 
-export type PianoYear = { courses: string[]; soprannumero: string[] };
-export type Piano = { 1: PianoYear; 2: PianoYear; 3: PianoYear };
-export type PlanEntryKind = "catalog" | "external";
-
-export type PlanCycle = {
-  id: number | null;
-  academicYear: string;
-  studentYear: 1 | 2 | 3;
-  track: Track;
-  validationMode: PlanValidationMode;
-  status: PlanStatus;
-  archivedAt: string | null;
-  approvalStatus: ApprovalStatus | null;
-  revisionOfCycleId: number | null;
-  compiledOnPolimiAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  isVirtual?: boolean;
-};
-
-export type PlanEntry = {
-  id: number | null;
-  cycleId: number | null;
-  courseCode: string;
-  courseYear: 1 | 2 | 3;
-  semester: 1 | 2;
-  entryKind: PlanEntryKind;
-  externalName: string | null;
-  externalCfu: number | null;
-  position: EntryPosition;
-  origin: EntryOrigin;
-  isNewFrequency: boolean;
-  feeCounted: boolean;
-  createdAt: string;
-};
-
-export type PlanScenario = { cycle: PlanCycle; entries: PlanEntry[] };
-
-export type PlanDraftEntry = {
-  courseCode: string;
-  courseYear: 1 | 2 | 3;
-  semester?: 1 | 2;
-  entryKind?: PlanEntryKind;
-  externalName?: string | null;
-  externalCfu?: number | null;
-  position: EntryPosition;
-  origin: EntryOrigin;
-  // Accepted for backwards-compatible clients but deliberately ignored by the server.
-  isNewFrequency?: boolean;
-  feeCounted?: boolean;
-};
-
-export type PlanDraftPayload = {
-  cycleId: number | null;
-  academicYear: string;
-  studentYear: 1 | 2 | 3;
-  track: Track;
-  validationMode: PlanValidationMode;
-  status?: PlanStatus;
-  entries: PlanDraftEntry[];
-};
-
-export type RequiredReinsertion = { courseCode: string; sourceCycleId: number; sourceAcademicYear: string };
+export type {
+  PlanCycle,
+  PlanDraftEntry,
+  PlanDraftPayload,
+  PlanEntry,
+  PlanEntryKind,
+  PlanScenario,
+  PreviousCompiledEntry,
+} from "./polimi/planModel";
 
 type CycleRow = {
   id: number;
@@ -101,22 +57,15 @@ type EntryRow = {
   entry_kind: PlanEntryKind;
   external_name: string | null;
   external_cfu: number | null;
-  position: EntryPosition;
-  origin: EntryOrigin;
+  position: "effective" | "supernumerary";
+  origin: PlanEntry["origin"];
   is_new_frequency: number;
   fee_counted: number;
   created_at: string;
 };
 
-export const EMPTY_PIANO: Piano = {
-  1: { courses: [], soprannumero: [] },
-  2: { courses: [], soprannumero: [] },
-  3: { courses: [], soprannumero: [] },
-};
-
 const nowIso = () => new Date().toISOString();
 const ACTIVE_CYCLE_KEY = "active_plan_cycle_id";
-const ACADEMIC_YEAR_PATTERN = /^(\d{4})\/(\d{4})$/;
 
 const mapCycle = (row: CycleRow): PlanCycle => ({
   id: row.id,
@@ -149,105 +98,65 @@ const mapEntry = (row: EntryRow): PlanEntry => ({
   createdAt: row.created_at,
 });
 
-function assertAcademicYear(value: string): void {
-  const match = ACADEMIC_YEAR_PATTERN.exec(value);
-  if (!match || Number(match[2]) !== Number(match[1]) + 1) throw new Error("Anno accademico non valido: usa YYYY/YYYY con anni consecutivi.");
-}
-
 function setActiveCycleId(cycleId: number): void {
   getDb().prepare(`
     INSERT INTO settings (key, value) VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
   `).run(ACTIVE_CYCLE_KEY, String(cycleId));
 }
-
-function makeEntry(code: string, courseYear: 1 | 2 | 3, track: Track): PlanEntry {
-  const course = getCourse(code);
-  if (!course) throw new Error(`Corso di default sconosciuto: ${code}.`);
-  const offering = getCourseOffering(code, track, courseYear);
-  const semester = offering?.semester ?? (course.semester === "A" ? 1 : course.semester);
+function emptyCycle(academicYear: string, studentYear: 1 | 2 | 3, track: Track, createdAt: string): PlanCycle {
   return {
     id: null,
-    cycleId: null,
-    courseCode: code,
-    courseYear,
-    semester,
-    entryKind: "catalog",
-    externalName: null,
-    externalCfu: null,
-    position: "effective",
-    origin: "recommended",
-    isNewFrequency: true,
-    feeCounted: true,
-    createdAt: nowIso(),
-  };
-}
-
-const DEFAULT_CODES: Record<Track, Record<1 | 2 | 3, string[]>> = {
-  I3I: {
-    1: ["082740", "082746", "082747", "051124", "082748", "054303"],
-    2: ["052425", "085779", "085905", "085903", "058083", "099319", "086067", "052509"],
-    3: ["085746", "052511", "085887", "051289", "085877", "054441", "052510", "085923", "056889", "088804", "085901"],
-  },
-  I3C: {
-    1: ["082740", "082746", "082747", "051124", "082748", "054303"],
-    2: ["052425", "085779", "085905", "093506", "099319", "099322", "054440"],
-    3: ["085746", "093283", "097459", "097460", "051234", "054442", "051289", "054305", "059431", "085900"],
-  },
-};
-
-export function buildDefaultPiano(track: Track = DEFAULT_TRACK): Piano {
-  return {
-    1: { courses: [...DEFAULT_CODES[track][1]], soprannumero: [] },
-    2: { courses: [...DEFAULT_CODES[track][2]], soprannumero: [] },
-    3: { courses: [...DEFAULT_CODES[track][3]], soprannumero: [] },
-  };
-}
-
-export function buildDefaultScenario(track: Track = DEFAULT_TRACK, studentYear: 1 | 2 | 3 = 1, academicYear = ACADEMIC_YEAR): PlanScenario {
-  const now = nowIso();
-  return {
-    cycle: {
-      id: null,
-      academicYear,
-      studentYear,
-      track,
-      validationMode: "annual_submission",
-      status: "draft",
-      archivedAt: null,
-      approvalStatus: null,
-      revisionOfCycleId: null,
-      compiledOnPolimiAt: null,
-      createdAt: now,
-      updatedAt: now,
-      isVirtual: true,
-    },
-    entries: ([1, 2, 3] as const).flatMap((year) => DEFAULT_CODES[track][year].map((code) => ({
-      ...makeEntry(code, year, track),
-      feeCounted: year === studentYear,
-    }))),
-  };
-}
-
-export function getStudyPlan(): Piano {
-  return planEntriesToPiano(getCurrentPlanScenario().entries);
-}
-
-export function getTrack(): Track {
-  return getCurrentPlanScenario().cycle.track;
-}
-
-export function setTrack(track: Track): void {
-  const scenario = getCurrentPlanScenario();
-  if (scenario.cycle.id === null) throw new Error("Salva prima lo scenario.");
-  savePlanDraft({
-    cycleId: scenario.cycle.id,
-    academicYear: scenario.cycle.academicYear,
-    studentYear: scenario.cycle.studentYear,
+    academicYear,
+    studentYear,
     track,
-    validationMode: scenario.cycle.validationMode,
-    entries: scenario.entries.map(toDraftEntry),
-  });
+    validationMode: "annual_submission",
+    status: "draft",
+    archivedAt: null,
+    approvalStatus: null,
+    revisionOfCycleId: null,
+    compiledOnPolimiAt: null,
+    createdAt,
+    updatedAt: createdAt,
+    isVirtual: true,
+  };
+}
+
+/**
+ * Proposta di piano **annuale**: reinserimenti dovuti più nuove frequenze dell'anno.
+ * Non trascina i tre anni di corso e non ripropone ciò che è già verbalizzato.
+ */
+export function buildAnnualScenario(options: {
+  track?: Track;
+  studentYear?: 1 | 2 | 3;
+  academicYear?: string;
+  exams?: Parameters<typeof buildAnnualPlanProposal>[0]["exams"];
+  previousCompiledEntries?: PreviousCompiledEntry[];
+  asOf?: string;
+}): PlanScenario {
+  const track = options.track ?? DEFAULT_TRACK;
+  const studentYear = options.studentYear ?? 1;
+  const academicYear = options.academicYear ?? DEFAULT_ACADEMIC_YEAR;
+  const createdAt = nowIso();
+  const entries = buildAnnualPlanProposal({
+    catalog: getCatalog(academicYear),
+    track,
+    studentYear,
+    academicYear,
+    exams: options.exams ?? {},
+    previousCompiledEntries: options.previousCompiledEntries ?? [],
+    asOf: options.asOf ?? createdAt.slice(0, 10),
+  }, createdAt);
+  return { cycle: emptyCycle(academicYear, studentYear, track, createdAt), entries };
+}
+
+/** Scenario di partenza per una carriera vuota; utile per test e primo avvio. */
+export function buildDefaultScenario(
+  track: Track = DEFAULT_TRACK,
+  studentYear: 1 | 2 | 3 = 1,
+  academicYear = DEFAULT_ACADEMIC_YEAR
+): PlanScenario {
+  return buildAnnualScenario({ track, studentYear, academicYear });
 }
 
 export function listPlanCycles(): PlanCycle[] {
@@ -276,20 +185,43 @@ export function getCurrentPlanScenario(): PlanScenario {
   return buildDefaultScenario();
 }
 
+/** Id dello scenario attivo, senza rileggere le righe del piano. */
+export function getActiveCycleId(): number | null {
+  const row = getDb().prepare(`
+    SELECT c.id AS id FROM study_plan_cycles c
+    JOIN settings s ON s.key = ? AND CAST(s.value AS INTEGER) = c.id
+    WHERE c.archived_at IS NULL
+  `).get(ACTIVE_CYCLE_KEY) as { id: number } | undefined;
+  return row?.id ?? null;
+}
+
+/** Solo le righe di un piano: usata quando il ciclo è già stato letto. */
+export function getPlanEntries(cycleId: number): PlanEntry[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM study_plan_entries WHERE cycle_id = ? ORDER BY course_year, semester, id")
+    .all(cycleId) as EntryRow[];
+  return rows.map(mapEntry);
+}
+
+/** Rende attivo uno scenario senza rileggerlo: usata dai flussi che lo hanno già in mano. */
+export function markCycleActive(cycleId: number): void {
+  setActiveCycleId(cycleId);
+}
+
 export function getPlanScenario(cycleId: number): PlanScenario | null {
   if (!Number.isSafeInteger(cycleId) || cycleId <= 0) return null;
   const db = getDb();
   const cycle = db.prepare("SELECT * FROM study_plan_cycles WHERE id = ?").get(cycleId) as CycleRow | undefined;
   if (!cycle) return null;
-  const entries = db.prepare("SELECT * FROM study_plan_entries WHERE cycle_id = ? ORDER BY course_year, semester, id").all(cycleId) as EntryRow[];
-  return { cycle: mapCycle(cycle), entries: entries.map(mapEntry) };
+  return { cycle: mapCycle(cycle), entries: getPlanEntries(cycleId) };
 }
 
-export function getBaseRevisionEntries(scenario: PlanScenario): PlanEntry[] {
-  return scenario.cycle.revisionOfCycleId ? getPlanScenario(scenario.cycle.revisionOfCycleId)?.entries ?? [] : [];
+export function getBaseRevisionScenario(scenario: PlanScenario): PlanScenario | null {
+  return scenario.cycle.revisionOfCycleId ? getPlanScenario(scenario.cycle.revisionOfCycleId) : null;
 }
 
-export function getPreviousCompiledEntries(currentCycleId: number | null): { cycle: PlanCycle; entry: PlanEntry }[] {
+/** Storico dei piani realmente compilati su PoliMi: la fonte delle frequenze già acquisite. */
+export function getPreviousCompiledEntries(currentCycleId: number | null): PreviousCompiledEntry[] {
   const rows = getDb().prepare(`
     SELECT c.id AS cycle_id_ref, c.academic_year, c.student_year, c.track,
       c.validation_mode, c.status, c.archived_at, c.approval_status,
@@ -298,7 +230,7 @@ export function getPreviousCompiledEntries(currentCycleId: number | null): { cyc
     FROM study_plan_cycles c
     JOIN study_plan_entries e ON e.cycle_id = c.id
     WHERE c.status = 'polimi_compiled' AND (? IS NULL OR c.id != ?)
-    ORDER BY c.compiled_on_polimi_at DESC, c.id DESC, e.id
+    ORDER BY c.academic_year DESC, c.id DESC, e.id
   `).all(currentCycleId, currentCycleId) as (EntryRow & {
     cycle_id_ref: number; academic_year: string; student_year: number; track: Track;
     validation_mode: PlanValidationMode; status: PlanStatus; archived_at: string | null;
@@ -322,17 +254,21 @@ function normalizeEntry(entry: PlanDraftEntry, payload: PlanDraftPayload): Omit<
   if (!code || code.length > 32) throw new Error("Codice corso non valido.");
   if (![1, 2, 3].includes(entry.courseYear)) throw new Error(`Anno non valido per ${code}.`);
   if (!(["effective", "supernumerary"] as const).includes(entry.position)) throw new Error(`Posizione non valida per ${code}.`);
-  if (!(["recommended", "carried_over", "new_frequency", "recovery_reinserted", "free_choice"] as const).includes(entry.origin)) throw new Error(`Origine non valida per ${code}.`);
+  if (!(["recommended", "carried_over", "new_frequency", "recovery_reinserted", "free_choice"] as const).includes(entry.origin)) {
+    throw new Error(`Origine non valida per ${code}.`);
+  }
 
+  const catalog = getCatalog(payload.academicYear);
   const entryKind = entry.entryKind ?? "catalog";
-  const course = getCourse(code);
+  const course = findCourse(catalog, code);
   let semester = entry.semester;
   let externalName: string | null = null;
   let externalCfu: number | null = null;
+
   if (entryKind === "catalog") {
-    if (!course) throw new Error(`Corso di catalogo sconosciuto: ${code}.`);
-    semester ??= course.semester === "A" ? 1 : course.semester;
-    if (!getCourseOffering(code, payload.track, entry.courseYear, semester) && !course.isLinkedExam) {
+    if (!course) throw new Error(`Corso di catalogo sconosciuto per l'AA ${catalog.academicYear}: ${code}.`);
+    semester ??= offeringSemester(catalog, code, payload.track, entry.courseYear);
+    if (!course.isLinkedExam && !findOffering(catalog, code, payload.track, entry.courseYear, semester)) {
       throw new Error(`L'offerta ${code} non è compatibile con anno, semestre e percorso selezionati.`);
     }
   } else if (entryKind === "external") {
@@ -346,9 +282,8 @@ function normalizeEntry(entry: PlanDraftEntry, payload: PlanDraftPayload): Omit<
   }
   if (semester !== 1 && semester !== 2) throw new Error(`Semestre non valido per ${code}.`);
 
-  const alreadyAttended = entry.origin === "carried_over" || entry.origin === "recovery_reinserted";
-  const isNewFrequency = !alreadyAttended;
-  const feeCounted = isNewFrequency && entry.courseYear === payload.studentYear;
+  // Solo le nuove frequenze contano per la contribuzione: un reinserimento è già stato pagato.
+  const isNewFrequency = !isReinsertion({ origin: entry.origin } as PlanEntry);
   return {
     courseCode: code,
     courseYear: entry.courseYear,
@@ -359,17 +294,43 @@ function normalizeEntry(entry: PlanDraftEntry, payload: PlanDraftPayload): Omit<
     position: entry.position,
     origin: entry.origin,
     isNewFrequency,
-    feeCounted,
+    feeCounted: isNewFrequency,
   };
 }
 
-export function savePlanDraft(payload: PlanDraftPayload): PlanScenario {
+/**
+ * Controlla e normalizza una bozza senza scrivere nulla. Serve anche al simulatore: gli esiti
+ * della carriera non devono iniziare a essere applicati prima di sapere che il piano è salvabile.
+ */
+function normalizePlanDraft(payload: PlanDraftPayload): ReturnType<typeof normalizeEntry>[] {
   assertAcademicYear(payload.academicYear);
   if (![1, 2, 3].includes(payload.studentYear)) throw new Error("Anno di corso non valido.");
   if (payload.track !== "I3I" && payload.track !== "I3C") throw new Error("Percorso non valido.");
   if (!Array.isArray(payload.entries) || payload.entries.length > 100) throw new Error("Il piano può contenere al massimo 100 attività.");
+
+  // Il vincolo sul percorso va controllato prima di normalizzare le voci: altrimenti un cambio
+  // di percorso in revisione fallisce con un errore d'offerta invece della causa reale.
+  if (payload.cycleId !== null) {
+    const current = getDb().prepare("SELECT validation_mode, track FROM study_plan_cycles WHERE id = ?")
+      .get(payload.cycleId) as { validation_mode: PlanValidationMode; track: Track } | undefined;
+    if (!current) throw new Error("Scenario non trovato.");
+    if (current?.validation_mode === "second_semester_revision" && payload.track !== current.track) {
+      throw new Error("Nella modifica del secondo semestre il percorso non può essere cambiato.");
+    }
+  }
+
   const normalized = payload.entries.map((entry) => normalizeEntry(entry, payload));
   if (new Set(normalized.map((entry) => entry.courseCode)).size !== normalized.length) throw new Error("Il piano contiene attività duplicate.");
+  return normalized;
+}
+
+/** Valida una bozza prima di qualsiasi effetto collaterale. */
+export function validatePlanDraft(payload: PlanDraftPayload): void {
+  normalizePlanDraft(payload);
+}
+
+export function savePlanDraft(payload: PlanDraftPayload): PlanScenario {
+  const normalized = normalizePlanDraft(payload);
 
   const db = getDb();
   const now = nowIso();
@@ -381,6 +342,9 @@ export function savePlanDraft(payload: PlanDraftPayload): PlanScenario {
       if (current.status === "polimi_compiled") throw new Error("Uno scenario compilato è storico e non può essere modificato.");
       if (current.archived_at) throw new Error("Ripristina lo scenario prima di modificarlo.");
       if (payload.validationMode !== current.validation_mode) throw new Error("La modalità dello scenario non può essere cambiata dopo la creazione.");
+      if (current.validation_mode === "second_semester_revision" && payload.track !== current.track) {
+        throw new Error("Nella modifica del secondo semestre il percorso non può essere cambiato.");
+      }
       db.prepare(`
         UPDATE study_plan_cycles
         SET academic_year = ?, student_year = ?, track = ?, status = 'draft',
@@ -425,11 +389,20 @@ export function savePlanDraft(payload: PlanDraftPayload): PlanScenario {
   }
 }
 
+/** Crea la bozza annuale partendo da carriera reale e piani già compilati. */
 export function createAnnualDraft(academicYear: string, studentYear: 1 | 2 | 3, track: Track): PlanScenario {
-  const draft = buildDefaultScenario(track, studentYear, academicYear);
+  assertAcademicYear(academicYear);
+  const proposal = buildAnnualScenario({
+    academicYear,
+    studentYear,
+    track,
+    exams: getExams(),
+    previousCompiledEntries: getPreviousCompiledEntries(null),
+    asOf: today(),
+  });
   return savePlanDraft({
     cycleId: null, academicYear, studentYear, track, validationMode: "annual_submission",
-    entries: draft.entries.map(toDraftEntry),
+    entries: proposal.entries.map(toDraftEntry),
   });
 }
 
@@ -480,35 +453,39 @@ export function restorePlanCycle(cycleId: number): PlanScenario {
   return getPlanScenario(cycleId) as PlanScenario;
 }
 
+/**
+ * Bozza per l'anno accademico successivo: viene **ricostruita** da carriera e storico,
+ * non copiata. Così i corsi già verbalizzati non vengono trascinati e i non superati
+ * diventano reinserimenti espliciti.
+ */
 export function duplicatePlanForNextAcademicYear(cycleId: number): PlanScenario {
   const source = getPlanScenario(cycleId);
   if (!source) throw new Error("Piano da duplicare non trovato.");
-  if (source.cycle.status !== "polimi_compiled") throw new Error("Puoi duplicare solo uno scenario compilato su PoliMi.");
+  if (source.cycle.status !== "polimi_compiled") throw new Error("Puoi creare il piano successivo solo da uno scenario compilato su PoliMi.");
   const nextAcademicYear = incrementAcademicYear(source.cycle.academicYear);
   const nextStudentYear = Math.min(3, source.cycle.studentYear + 1) as 1 | 2 | 3;
-  const exams = getExams();
+  const proposal = buildAnnualScenario({
+    academicYear: nextAcademicYear,
+    studentYear: nextStudentYear,
+    track: source.cycle.track,
+    exams: getExams(),
+    previousCompiledEntries: getPreviousCompiledEntries(null),
+    asOf: today(),
+  });
   return savePlanDraft({
     cycleId: null,
     academicYear: nextAcademicYear,
     studentYear: nextStudentYear,
     track: source.cycle.track,
     validationMode: "annual_submission",
-    entries: source.entries.map((entry) => {
-      const due = entry.position === "effective" && entry.entryKind === "catalog"
-        && !getCourse(entry.courseCode)?.isLinkedExam && entry.courseYear <= source.cycle.studentYear;
-      const carried = due && exams[entry.courseCode]?.status !== "passed_registered";
-      return {
-        ...toDraftEntry(entry),
-        origin: carried ? "carried_over" : entry.origin === "recommended" ? "recommended" : "new_frequency",
-      };
-    }),
+    entries: proposal.entries.map(toDraftEntry),
   });
 }
 
 export function createSecondSemesterRevision(cycleId: number): PlanScenario {
   const source = getPlanScenario(cycleId);
   if (!source) throw new Error("Scenario base non trovato.");
-  if (source.cycle.status !== "polimi_compiled") throw new Error("La revisione deve partire da uno scenario compilato su PoliMi.");
+  if (source.cycle.status !== "polimi_compiled") throw new Error("La modifica del secondo semestre deve partire da uno scenario compilato su PoliMi.");
   const db = getDb();
   const now = nowIso();
   let revisionId: number;
@@ -537,10 +514,4 @@ export function createSecondSemesterRevision(cycleId: number): PlanScenario {
     throw error;
   }
   return getPlanScenario(revisionId) as PlanScenario;
-}
-
-function incrementAcademicYear(academicYear: string): string {
-  const match = ACADEMIC_YEAR_PATTERN.exec(academicYear);
-  if (!match) throw new Error("Anno accademico non valido.");
-  return `${Number(match[1]) + 1}/${Number(match[2]) + 1}`;
 }

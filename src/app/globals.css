@@ -31,8 +31,8 @@
   --color-panel: #0a0f14;
   --color-panel2: #121c22;
 
-  --radius-card: 20px;
-  --radius-panel: 24px;
+  --radius-card: 16px;
+  --radius-panel: 20px;
 
   --shadow-card: 0 12px 40px rgba(0, 0, 0, 0.32);
   --shadow-elevated: 0 18px 60px rgba(0, 0, 0, 0.48);
@@ -67,6 +67,7 @@ body {
   min-height: 100vh;
   color: #fcfcfc;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  overflow-wrap: anywhere;
 }
 
 * {
@@ -82,6 +83,17 @@ textarea {
 
 input[type="date"] {
   color-scheme: dark;
+}
+
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid rgba(86, 215, 253, 0.75);
+  outline-offset: 2px;
+}
+
+@media (display-mode: standalone) {
+  .pwa-install-hint {
+    display: none;
+  }
 }
 
 ::selection {
@@ -114,8 +126,17 @@ input[type="date"] {
   100% { background-position:  200% 0; }
 }
 
-.animate-pop    { animation: pop 0.3s ease-out; }
-.animate-fadeup { animation: fadeInUp 0.45s ease-out both; }
+/* Apertura dei pannelli richiudibili: sostituisce l'animazione JS che trascinava
+   `motion/react` nel primo caricamento della pagina Piano. Il reset per
+   prefers-reduced-motion qui sotto la neutralizza senza codice aggiuntivo. */
+@keyframes panelOpen {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-pop        { animation: pop 0.3s ease-out; }
+.animate-fadeup     { animation: fadeInUp 0.45s ease-out both; }
+.animate-panel-open { animation: panelOpen 0.18s ease-out both; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

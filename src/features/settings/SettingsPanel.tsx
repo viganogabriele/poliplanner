@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { AlertCircle, CheckCircle2, Database, RotateCcw } from "lucide-react";
+import { AlertCircle, CheckCircle2, Database, HardDrive, RotateCcw, ShieldCheck, Smartphone } from "lucide-react";
 import { resetDatabaseAction, seedDatabaseAction } from "@/app/actions";
 import { Button } from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import PwaInstallButton from "@/components/ui/PwaInstallButton";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 
 export default function SettingsPanel() {
   const [isPending, startTransition] = useTransition();
@@ -26,7 +28,7 @@ export default function SettingsPanel() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {message && (
         <div
           className={`flex items-center gap-2 rounded-card border px-4 py-3 text-sm font-medium ${
@@ -45,10 +47,44 @@ export default function SettingsPanel() {
         </div>
       )}
 
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-primary">Gestione dati</h3>
+      <Card>
+        <CardHeader>
+          <div className="flex items-start gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent"><HardDrive className="size-5" aria-hidden="true" /></span>
+            <div>
+              <CardTitle>Dati locali</CardTitle>
+              <CardDescription>Questa istanza non ha utenti. I dati restano nel database SQLite locale.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-border bg-surface-muted/60 p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+              <ShieldCheck className="size-4 text-success" aria-hidden="true" />
+              Istanza privata
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-muted">Se pubblichi l&apos;app, proteggila con autenticazione tramite reverse proxy.</p>
+          </div>
+          <div className="rounded-xl border border-border bg-surface-muted/60 p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+              <Smartphone className="size-4 text-accent" aria-hidden="true" />
+              App sul dispositivo
+            </div>
+            <p className="mt-1 mb-3 text-xs leading-relaxed text-muted">Quando il browser lo consente, puoi installare Poliplanner dalla schermata Home.</p>
+            <PwaInstallButton />
+          </div>
+        </div>
+      </Card>
 
-        <div className="flex flex-wrap gap-3">
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Dati di esempio</CardTitle>
+            <CardDescription>Carica un calendario dimostrativo per esplorare l&apos;app.</CardDescription>
+          </div>
+        </CardHeader>
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="max-w-2xl text-sm leading-relaxed text-secondary">Questa operazione sostituisce calendario, lezioni, esami, piani e avanzamento attuali con dati di esempio.</p>
           <Button
             type="button"
             variant="primary"
@@ -56,9 +92,20 @@ export default function SettingsPanel() {
             disabled={isPending}
           >
             <Database className="size-4" aria-hidden="true" />
-            {isPending ? "Attendere…" : "Carica dati demo (seed)"}
+            {isPending ? "Attendere..." : "Carica dati di esempio"}
           </Button>
+        </div>
+      </Card>
 
+      <Card className="border-danger/30">
+        <CardHeader>
+          <div>
+            <CardTitle>Azioni pericolose</CardTitle>
+            <CardDescription>Il ripristino elimina tutti i dati e non può essere annullato.</CardDescription>
+          </div>
+        </CardHeader>
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="max-w-2xl text-sm leading-relaxed text-secondary">Elimina calendario, occorrenze delle lezioni, completamenti, esami, carriera, piani di studio, scenari e impostazioni.</p>
           <Button
             type="button"
             variant="danger"
@@ -66,25 +113,16 @@ export default function SettingsPanel() {
             disabled={isPending}
           >
             <RotateCcw className="size-4" aria-hidden="true" />
-            {isPending ? "Attendere…" : "Reset database"}
+            {isPending ? "Attendere..." : "Elimina tutti i dati"}
           </Button>
         </div>
-
-        <div className="space-y-1 text-xs text-muted">
-          <p>
-            <span className="font-semibold text-accent">Carica dati demo</span> — resetta il database e inserisce un calendario di esempio con materie universitarie e progressi simulati.
-          </p>
-          <p>
-            <span className="font-semibold text-danger">Reset database</span> — elimina tutti i dati (calendario, lezioni, progressi). Operazione irreversibile.
-          </p>
-        </div>
-      </div>
+      </Card>
 
       <ConfirmDialog
         open={showResetConfirm}
-        title="Reset database"
-        description="Questa operazione eliminerà tutti i dati (calendario, lezioni, progressi). L'operazione è irreversibile. Continuare?"
-        confirmLabel="Reset"
+        title="Eliminare tutti i dati?"
+        description="Verranno eliminati calendario, lezioni, completamenti, esami, carriera, piani di studio, scenari e impostazioni. L'operazione è irreversibile."
+        confirmLabel="Elimina tutto"
         variant="danger"
         onConfirm={() => { setShowResetConfirm(false); handleAction(resetDatabaseAction); }}
         onCancel={() => setShowResetConfirm(false)}
@@ -92,9 +130,9 @@ export default function SettingsPanel() {
 
       <ConfirmDialog
         open={showSeedConfirm}
-        title="Carica dati demo"
-        description="Questa operazione resetterà il database e caricherà dati di esempio. I dati attuali andranno persi. Continuare?"
-        confirmLabel="Carica demo"
+        title="Caricare i dati di esempio?"
+        description="I dati attuali verranno eliminati e sostituiti con un calendario e un avanzamento dimostrativi."
+        confirmLabel="Carica esempi"
         variant="default"
         onConfirm={() => { setShowSeedConfirm(false); handleAction(seedDatabaseAction); }}
         onCancel={() => setShowSeedConfirm(false)}

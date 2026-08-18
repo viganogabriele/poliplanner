@@ -1,258 +1,185 @@
-import { getCourse, getCourseOffering } from "./courses";
-import { activityCategoryForCourse } from "./cfuCalc";
+/**
+ * Validatore del piano annuale.
+ *
+ * Principi:
+ * - il piano è **annuale**, non la laurea intera: i vincoli di laurea (180 CFU, ambiti SSD)
+ *   sono proiezioni informative, non errori bloccanti;
+ * - la validazione usa sia la carriera sia il piano: ciò che è verbalizzato non viene mai richiesto;
+ * - un reinserimento è obbligatorio solo se la frequenza è precedente e l'esame non è verbalizzato;
+ * - le regole strutturali arrivano dalla configurazione dichiarativa del catalogo dell'anno;
+ * - ogni segnalazione dichiara **dove va mostrata** (`scope`): un vincolo del terzo anno non è un
+ *   problema del piano del primo, e un dubbio sui dati non è un difetto del piano.
+ *
+ * Modulo puro e testabile: nessun accesso al database, nessuna data "adesso" implicita.
+ */
+
 import {
-  BASE_AREA_RULES,
-  BASE_TOTAL_CFU_RANGE,
+  activityCategory,
+  courseCfu,
+  courseGroup,
+  courseGroupsForTrack,
+  courseName,
+  findCourse,
+  findOffering,
+  isFinalExamModule,
+  resolveCatalog,
+} from "./catalog";
+import type { Catalog, CatalogDataStatus, CourseYear, RuleProvenance } from "./catalog/types";
+import {
+  computeAnnualTotals,
+  computeRequiredReinsertions,
+  type AnnualPlanInputs,
+  type AnnualPlanTotals,
+  type RequiredReinsertion,
+} from "./annualPlan";
+import { buildCareerView, careerRows, type CareerExamsMap, type CareerRow, type CareerView } from "./career";
+import {
   CATEGORY_LABELS,
-  CATEGORY_MINIMUMS,
-  CHARACTERIZING_AREA_RULES,
-  CHARACTERIZING_TOTAL_CFU_RANGE,
-  COURSE_AREA_BY_CODE,
-  EXTERNAL_FREE_CHOICE_CFU_MAX,
-  FINAL_EXAM_CFU,
-  FREE_CHOICE_CFU_RANGE,
-  INTERNSHIP_COURSE_CODES,
-  NOTA_MAGISTRALE,
+  DISCLAIMER,
   PSPA_BY_TRACK,
-  SUPERNUMERARY_CFU_MAX,
-  TOTAL_CFU_REQUIRED,
-  YEAR_CFU_RANGE,
   type ActivityCategory,
   type ApprovalStatus,
   type Track,
 } from "./constraints";
-import type { ExamsMap } from "@/lib/esami";
-import type { PlanEntry, PlanScenario } from "@/lib/piano";
+import { evaluateRules, type RuleFinding } from "./rules";
+import { classifyStructuralChoices, type StructuralChoice } from "./structuralChoice";
+import {
+  entryCfu,
+  isReinsertion,
+  planReferenceDate,
+  type PlanEntry,
+  type PlanScenario,
+  type PreviousCompiledEntry,
+} from "./planModel";
+
+export type IssueSeverity = "error" | "warning" | "advice" | "info";
+
+/**
+ * Dove appartiene una segnalazione. Serve alla UI per non mescolare cose diverse:
+ * un obbligo del terzo anno non va nel riepilogo di un piano del primo, e un dato da
+ * verificare sul Manifesto non è un difetto del piano dello studente.
+ */
+export type IssueScope =
+  /** Riguarda il piano di quest'anno: va risolto o controllato adesso. */
+  | "current_plan"
+  /** Riguarda l'affidabilità dei dati del catalogo, non il piano. */
+  | "data_quality"
+  /** Vincolo esigibile a un anno di corso successivo: consultabile, non un problema. */
+  | "future_years"
+  /** Proiezione verso i 180 CFU della laurea. */
+  | "degree_projection"
+  /** Spiegazioni, contesto e avvertenze. */
+  | "context";
 
 export type ValidationIssue = {
   id: string;
-  type: "error" | "warning" | "info";
+  /** `error` blocca, `warning` avvisa, `advice` consiglia, `info` spiega. */
+  type: IssueSeverity;
   category: string;
   message: string;
-};
-
-export type PreviousCompiledEntry = {
-  cycle: { id: number | null; academicYear: string; studentYear?: 1 | 2 | 3 };
-  entry: PlanEntry;
+  /** Regola o paragrafo del Manifesto applicato, mostrato all'utente. */
+  source?: string;
+  /** Da dove viene il vincolo: Manifesto, prassi da verificare, o ipotesi dell'utente. */
+  provenance: RuleProvenance;
+  /** Sezione della UI a cui la segnalazione appartiene. */
+  scope: IssueScope;
+  /** false quando il vincolo diventa esigibile a un anno di corso successivo. */
+  dueNow: boolean;
+  /** Anno di corso entro cui il vincolo va soddisfatto, quando la regola lo dichiara. */
+  dueByYear?: CourseYear;
 };
 
 export type PlanValidationContext = {
-  exams: ExamsMap;
+  exams: CareerExamsMap;
   previousCompiledEntries: PreviousCompiledEntry[];
   baseRevisionScenario?: PlanScenario | null;
   annualCfuException?: "ofa" | "graduation" | null;
+  /** Data a cui valutare "già verbalizzato"; default: data di riferimento del piano. */
+  asOf?: string | null;
 };
 
-export type PlanValidationSummary = {
-  totalEffectiveCfu: number;
-  annualFeeCfu: number;
-  recoveredCfu: number;
-  supernumeraryCfu: number;
+export type PlanValidationSummary = AnnualPlanTotals & {
+  academicYear: string;
+  requestedAcademicYear: string;
+  dataStatus: CatalogDataStatus;
+  isFallbackCatalog: boolean;
+  studentYear: CourseYear;
+  track: Track;
   approvalStatus: ApprovalStatus;
+  status: "valid" | "warning" | "invalid";
+  contributionRule: string;
+  referenceDate: string;
 };
 
-const YEAR_ONE_REQUIRED = ["082740", "082746", "082747", "051124", "082748", "054303"];
-const YEAR_TWO_COMMON = ["052425", "085779", "085905"];
-const TABA_CODES = ["085900", "058081", "058083", "058084"];
-const PROBABILITY_BLOCK = ["099319", "054304"];
-const I3I_FIXED = ["085746", "085877", "054441", "052510", "085923"];
-const I3C_FIXED = ["085746", "093283", "097459", "097460", "051234", "054442", "051289"];
-const I3I_CHOICE_GROUPS = new Set(["TABREC", "TABAUT", "TABINF", "TABING", "TABTLC"]);
-const I3C_CHOICE_GROUPS = new Set(["TABCOM", "TABGEN"]);
+export type PlanSections = {
+  /** "Da reinserire": frequenza già acquisita, esame non verbalizzato. */
+  reinsertions: PlanEntry[];
+  /** "Nuove frequenze": le uniche che contano per la contribuzione. */
+  newFrequencies: PlanEntry[];
+  supernumerary: PlanEntry[];
+  /** "Esami già superati": sola lettura. */
+  alreadyPassed: CareerRow[];
+};
 
-function issue(id: string, type: ValidationIssue["type"], category: string, message: string): ValidationIssue {
-  return { id, type, category, message };
-}
+export type PlanValidationResult = {
+  issues: ValidationIssue[];
+  summary: PlanValidationSummary;
+  sections: PlanSections;
+  ruleFindings: RuleFinding[];
+  requiredReinsertions: RequiredReinsertion[];
+  missingReinsertions: RequiredReinsertion[];
+  /** Stato delle scelte obbligate condizionate: reinserimento oppure scelta in tabella di recupero. */
+  structuralChoices: StructuralChoice[];
+};
 
-function entryCfu(entry: PlanEntry): number {
-  return entry.entryKind === "external" ? entry.externalCfu ?? 0 : getCourse(entry.courseCode)?.cfu ?? 0;
-}
+type IssueOptions = {
+  source?: string;
+  provenance?: RuleProvenance;
+  scope?: IssueScope;
+  dueNow?: boolean;
+  dueByYear?: CourseYear;
+};
 
-function entryCategory(entry: PlanEntry, track: Track): ActivityCategory {
-  if (entry.entryKind === "external") return "D";
-  const course = getCourse(entry.courseCode);
-  if (!course) return "C";
-  if (course.offerings) {
-    return getCourseOffering(entry.courseCode, track, entry.courseYear, entry.semester)?.category ?? course.type[0] ?? "C";
-  }
-  return activityCategoryForCourse(course);
-}
-
-function entryGroup(entry: PlanEntry, track: Track): string | null {
-  if (entry.entryKind === "external") return null;
-  const course = getCourse(entry.courseCode);
-  if (!course) return null;
-  return getCourseOffering(entry.courseCode, track, entry.courseYear, entry.semester)?.group ?? course.electiveGroup;
-}
-
-function isLinkedModule(entry: PlanEntry): boolean {
-  return entry.entryKind === "catalog" && Boolean(getCourse(entry.courseCode)?.isLinkedExam);
-}
-
-function addMissingCodes(issues: ValidationIssue[], codes: string[], selected: Set<string>, category: string): void {
-  for (const code of codes) {
-    if (!selected.has(code)) issues.push(issue(`missing_${code}`, "error", category, `Manca l'attività obbligatoria "${getCourse(code)?.name ?? code}" (${code}).`));
-  }
-}
-
-export function validatePlanScenario(scenario: PlanScenario, context: PlanValidationContext): { issues: ValidationIssue[]; summary: PlanValidationSummary } {
-  const issues: ValidationIssue[] = [];
-  const effective = scenario.entries.filter((entry) => entry.position === "effective");
-  const supernumerary = scenario.entries.filter((entry) => entry.position === "supernumerary");
-  const selected = new Set(effective.map((entry) => entry.courseCode));
-  const duplicateCodes = scenario.entries.filter((entry, index, all) => all.findIndex((other) => other.courseCode === entry.courseCode) !== index);
-  for (const duplicate of duplicateCodes) issues.push(issue(`duplicate_${duplicate.courseCode}`, "error", "Duplicati", `L'attività ${duplicate.courseCode} compare più di una volta.`));
-
-  for (const entry of scenario.entries) {
-    if (entry.entryKind === "external") continue;
-    const course = getCourse(entry.courseCode);
-    if (!course) {
-      issues.push(issue(`unknown_${entry.courseCode}`, "error", "Catalogo", `Codice corso sconosciuto: ${entry.courseCode}.`));
-      continue;
-    }
-    if (!course.isLinkedExam && !getCourseOffering(entry.courseCode, scenario.cycle.track, entry.courseYear, entry.semester)) {
-      issues.push(issue(`offering_${entry.courseCode}`, "error", "Offerta", `L'offerta di "${course.name}" non è compatibile con percorso, anno e semestre scelti.`));
-    }
-  }
-
-  const pspa = PSPA_BY_TRACK[scenario.cycle.track];
-  issues.push(issue("pspa_structure", "info", "PSPA", `Milano Leonardo in presenza: anno 1 ${pspa.year1}, anno 2 ${pspa.year2}, anno 3 ${pspa.year3}.`));
-
-  addMissingCodes(issues, YEAR_ONE_REQUIRED, selected, "Anno 1 – IT1");
-  addMissingCodes(issues, YEAR_TWO_COMMON, selected, "Anno 2 – IT1");
-
-  const yearTwo = effective.filter((entry) => entry.courseYear === 2);
-  const yearTwoCodes = new Set(yearTwo.map((entry) => entry.courseCode));
-  const tabaCount = TABA_CODES.filter((code) => yearTwoCodes.has(code)).length;
-  const b1Logica = yearTwoCodes.has("085903") && tabaCount === 1 && !yearTwoCodes.has("093506");
-  const b1Campi = yearTwoCodes.has("093506") && !yearTwoCodes.has("085903") && tabaCount === 0;
-  if (!b1Logica && !b1Campi) {
-    issues.push(issue("year2_b1", "error", "Anno 2 – blocco B1", "Scegli un blocco completo: Logica e Algebra + un corso TABA, oppure Elettromagnetismo e Campi."));
-  }
-  if (scenario.cycle.track === "I3I" && !b1Logica) {
-    issues.push(issue("i3i_logica", "error", "I3I", "Il percorso I3I richiede Logica e Algebra e una scelta TABA."));
-  }
-
-  const probabilityCount = PROBABILITY_BLOCK.filter((code) => yearTwoCodes.has(code)).length;
-  if (probabilityCount !== 1) issues.push(issue("year2_b2", "error", "Anno 2 – blocco B2", "Scegli esattamente uno tra Probabilità e Statistica e Informazione e Stima."));
-
-  const requiredB3 = scenario.cycle.track === "I3I" ? ["086067", "052509"] : ["099322", "054440"];
-  addMissingCodes(issues, requiredB3, selected, "Anno 2 – blocco B3");
-
-  if (scenario.cycle.track === "I3I") {
-    addMissingCodes(issues, I3I_FIXED, selected, "Anno 3 – I3I");
-    const italian = ["052511", "085887", "051289"].filter((code) => selected.has(code));
-    const english = ["063149", "063579", "063150"].filter((code) => selected.has(code));
-    if (!((italian.length === 3 && english.length === 0) || (english.length === 3 && italian.length === 0))) {
-      issues.push(issue("i3i_language_bundle", "error", "Anno 3 – bundle lingua", "Seleziona il bundle italiano completo oppure quello inglese completo, senza combinazioni miste."));
-    }
-  } else {
-    addMissingCodes(issues, I3C_FIXED, selected, "Anno 3 – I3C");
-  }
-
-  const externalEffective = effective.filter((entry) => entry.entryKind === "external");
-  const externalCfu = externalEffective.reduce((sum, entry) => sum + entryCfu(entry), 0);
-  if (externalCfu > EXTERNAL_FREE_CHOICE_CFU_MAX) {
-    issues.push(issue("external_cfu", "error", "Scelte autonome", `Le attività esterne valgono ${externalCfu} CFU; il massimo ammesso è ${EXTERNAL_FREE_CHOICE_CFU_MAX}.`));
-  }
-
-  const allowedChoiceGroups = scenario.cycle.track === "I3I" ? I3I_CHOICE_GROUPS : I3C_CHOICE_GROUPS;
-  const officialChoiceEntries = effective.filter((entry) =>
-    entry.courseYear === 3 && !isLinkedModule(entry) && allowedChoiceGroups.has(entryGroup(entry, scenario.cycle.track) ?? "")
-  );
-  const choiceCfu = officialChoiceEntries.reduce((sum, entry) => sum + entryCfu(entry), 0) + externalCfu;
-  if (choiceCfu !== 15) {
-    issues.push(issue("track_choices_15", "error", `Scelte ${scenario.cycle.track}`, `Le tabelle ammesse e le eventuali attività esterne devono totalizzare esattamente 15 CFU; attualmente ${choiceCfu}.`));
-  }
-
-  const totalEffectiveCfu = effective.reduce((sum, entry) => sum + entryCfu(entry), 0);
-  if (totalEffectiveCfu !== TOTAL_CFU_REQUIRED) {
-    issues.push(issue("total_cfu", "error", "CFU Totali", `CFU effettivi: ${totalEffectiveCfu} / ${TOTAL_CFU_REQUIRED}. Il totale deve essere esattamente ${TOTAL_CFU_REQUIRED}.`));
-  }
-  const supernumeraryCfu = supernumerary.reduce((sum, entry) => sum + entryCfu(entry), 0);
-  if (supernumeraryCfu > SUPERNUMERARY_CFU_MAX) issues.push(issue("supernumerary_cfu", "error", "Soprannumero", `CFU soprannumerari: ${supernumeraryCfu} / ${SUPERNUMERARY_CFU_MAX}.`));
-
-  const byCategory: Record<ActivityCategory, number> = { A: 0, B: 0, C: 0, D: 0, V: 0, T: 0 };
-  for (const entry of effective) byCategory[entryCategory(entry, scenario.cycle.track)] += entryCfu(entry);
-  for (const [category, minimum] of Object.entries(CATEGORY_MINIMUMS)) {
-    const typed = category as ActivityCategory;
-    if (byCategory[typed] < minimum) issues.push(issue(`category_${category}`, "error", "CFU per Categoria", `${CATEGORY_LABELS[category]} (${category}): ${byCategory[typed]} / ${minimum} CFU minimi.`));
-  }
-  if (byCategory.V !== FINAL_EXAM_CFU) issues.push(issue("final_exam_cfu", "error", "Prova Finale", `I moduli ufficiali di prova finale devono valere ${FINAL_EXAM_CFU} CFU; attualmente ${byCategory.V}.`));
-  if (byCategory.D < FREE_CHOICE_CFU_RANGE[0] || byCategory.D > FREE_CHOICE_CFU_RANGE[1]) {
-    issues.push(issue("free_choice_range", "error", "Attività a scelta", `Attività di categoria D: ${byCategory.D} CFU; intervallo richiesto ${FREE_CHOICE_CFU_RANGE[0]}–${FREE_CHOICE_CFU_RANGE[1]}.`));
-  }
-
-  const areaTotals = {
-    base: { math_info_stats: 0, physics_chemistry: 0 },
-    characterizing: { electronics: 0, computer_engineering: 0, telecommunications: 0 },
+function issue(
+  id: string,
+  type: IssueSeverity,
+  category: string,
+  message: string,
+  options: IssueOptions = {}
+): ValidationIssue {
+  return {
+    id,
+    type,
+    category,
+    message,
+    source: options.source,
+    provenance: options.provenance ?? "manifesto",
+    scope: options.scope ?? "current_plan",
+    dueNow: options.dueNow ?? true,
+    dueByYear: options.dueByYear,
   };
-  for (const entry of effective) {
-    if (entry.entryKind === "external" || entryCategory(entry, scenario.cycle.track) === "D") continue;
-    const mapping = COURSE_AREA_BY_CODE[entry.courseCode];
-    if (!mapping) continue;
-    if (mapping.kind === "base") areaTotals.base[mapping.area] += entryCfu(entry);
-    else areaTotals.characterizing[mapping.area] += entryCfu(entry);
-  }
-  const baseTotal = Object.values(areaTotals.base).reduce((a, b) => a + b, 0);
-  for (const [area, rule] of Object.entries(BASE_AREA_RULES)) {
-    const cfu = areaTotals.base[area as keyof typeof areaTotals.base];
-    if (cfu < rule.min || cfu > rule.max) issues.push(issue(`base_area_${area}`, "error", "Aree di base", `${rule.label}: ${cfu} CFU, intervallo ${rule.min}–${rule.max}.`));
-  }
-  if (baseTotal < BASE_TOTAL_CFU_RANGE[0] || baseTotal > BASE_TOTAL_CFU_RANGE[1]) issues.push(issue("base_total", "error", "Aree di base", `Totale aree di base: ${baseTotal} CFU, intervallo ${BASE_TOTAL_CFU_RANGE[0]}–${BASE_TOTAL_CFU_RANGE[1]}.`));
-  const characterizingTotal = Object.values(areaTotals.characterizing).reduce((a, b) => a + b, 0);
-  for (const [area, rule] of Object.entries(CHARACTERIZING_AREA_RULES)) {
-    const cfu = areaTotals.characterizing[area as keyof typeof areaTotals.characterizing];
-    if (cfu < rule.min || cfu > rule.max) issues.push(issue(`characterizing_area_${area}`, "error", "Aree caratterizzanti", `${rule.label}: ${cfu} CFU, intervallo ${rule.min}–${rule.max}.`));
-  }
-  if (characterizingTotal < CHARACTERIZING_TOTAL_CFU_RANGE[0] || characterizingTotal > CHARACTERIZING_TOTAL_CFU_RANGE[1]) issues.push(issue("characterizing_total", "error", "Aree caratterizzanti", `Totale aree caratterizzanti: ${characterizingTotal} CFU, intervallo ${CHARACTERIZING_TOTAL_CFU_RANGE[0]}–${CHARACTERIZING_TOTAL_CFU_RANGE[1]}.`));
-
-  const annualFeeCfu = scenario.entries.filter((entry) => entry.feeCounted).reduce((sum, entry) => sum + entryCfu(entry), 0);
-  if (!context.annualCfuException && annualFeeCfu < YEAR_CFU_RANGE[0]) issues.push(issue("annual_cfu_low", "error", "CFU Anno", `CFU di nuova frequenza: ${annualFeeCfu}; minimo ${YEAR_CFU_RANGE[0]}. Indica esplicitamente un'eccezione OFA/prossimità alla laurea se applicabile.`));
-  if (annualFeeCfu > YEAR_CFU_RANGE[1]) issues.push(issue("annual_cfu_high", "error", "CFU Anno", `CFU di nuova frequenza: ${annualFeeCfu}; massimo ${YEAR_CFU_RANGE[1]}.`));
-  const recoveredCfu = scenario.entries.filter((entry) => !entry.feeCounted && ["carried_over", "recovery_reinserted"].includes(entry.origin)).reduce((sum, entry) => sum + entryCfu(entry), 0);
-
-  const requiredReinsertions = getRequiredReinsertions(context.previousCompiledEntries, context.exams);
-  for (const required of requiredReinsertions) {
-    if (!scenario.entries.some((entry) => isValidReinsertionEntry(entry, required.courseCode))) {
-      issues.push(issue(`reinsertion_${required.courseCode}`, "error", "Reinserimenti", `"${getCourse(required.courseCode)?.name ?? required.courseCode}" va reinserito dal piano ${required.sourceAcademicYear}.`));
-    }
-  }
-
-  if (scenario.cycle.validationMode === "second_semester_revision") validateSecondSemesterRevision(scenario, context.baseRevisionScenario, issues);
-
-  const internships = effective.filter((entry) => INTERNSHIP_COURSE_CODES.includes(entry.courseCode));
-  if (internships.length > 1) issues.push(issue("internship_duplicate", "error", "Tirocinio", "Seleziona una sola variante di tirocinio."));
-  if (internships.some((entry) => entryCfu(entry) === 10)) issues.push(issue("internship_lm", "warning", "Tirocinio", "Il tirocinio da 10 CFU può comportare obblighi aggiuntivi per l'accesso alla Laurea Magistrale."));
-  if (!selected.has(NOTA_MAGISTRALE.MUST_HAVE[0])) issues.push(issue("nota_meccanica", "warning", "Nota Magistrale", "Meccanica non è nel piano e può diventare un debito formativo alla LM-32."));
-
-  const approvalStatus = getApprovalStatus(scenario.entries);
-  issues.push(issue("approval", approvalStatus === "needs_commission_review" ? "warning" : "info", "Approvazione", approvalStatus === "needs_commission_review"
-    ? "Il piano contiene attività esterne: è prevista la valutazione della commissione."
-    : "Le scelte appartengono alle tabelle ufficiali preapprovate."));
-  issues.push(issue("annual_fee_info", "info", "CFU Tassa", `CFU di nuova frequenza stimati: ${annualFeeCfu}.`));
-
-  return { issues, summary: { totalEffectiveCfu, annualFeeCfu, recoveredCfu, supernumeraryCfu, approvalStatus } };
 }
 
-export function getRequiredReinsertions(previous: PreviousCompiledEntry[], exams: ExamsMap) {
-  const required = new Map<string, { courseCode: string; sourceCycleId: number; sourceAcademicYear: string }>();
-  for (const { cycle, entry } of previous) {
-    if (required.has(entry.courseCode) || !cycle.id || entry.position !== "effective" || entry.entryKind !== "catalog") continue;
-    const course = getCourse(entry.courseCode);
-    if (!course || course.isLinkedExam) continue;
-    const wasDueOrAttended = entry.courseYear <= (cycle.studentYear ?? 3) || ["carried_over", "recovery_reinserted"].includes(entry.origin);
-    if (!wasDueOrAttended) continue;
-    const status = exams[entry.courseCode]?.status;
-    if (status === "passed_registered" || status === "not_required") continue;
-    required.set(entry.courseCode, { courseCode: entry.courseCode, sourceCycleId: cycle.id, sourceAcademicYear: cycle.academicYear });
-  }
-  return [...required.values()];
+/** Segnalazione che nasce da un vincolo annuale del catalogo, con la sua provenienza dichiarata. */
+function annualIssue(
+  catalog: Catalog,
+  key: keyof Catalog["annual"]["sources"],
+  id: string,
+  type: IssueSeverity,
+  category: string,
+  message: string,
+  scope: IssueScope = "current_plan"
+): ValidationIssue {
+  const declared = catalog.annual.sources[key];
+  return issue(id, type, category, message, {
+    source: declared.source,
+    provenance: declared.provenance,
+    scope,
+  });
 }
 
 export function isValidReinsertionEntry(entry: PlanEntry, courseCode: string): boolean {
-  return entry.courseCode === courseCode && entry.position === "effective"
-    && ["carried_over", "recovery_reinserted"].includes(entry.origin);
+  return entry.courseCode === courseCode && entry.position === "effective" && isReinsertion(entry);
 }
 
 export function getApprovalStatus(entries: PlanEntry[]): ApprovalStatus {
@@ -261,18 +188,389 @@ export function getApprovalStatus(entries: PlanEntry[]): ApprovalStatus {
     : "auto_approved_after_deadline";
 }
 
-function validateSecondSemesterRevision(scenario: PlanScenario, base: PlanScenario | null | undefined, issues: ValidationIssue[]): void {
+/**
+ * Gruppo in cui ogni attività coperta risulta **effettivamente scelta**.
+ *
+ * L'ordine delle fonti conta: il piano di quest'anno batte lo storico, lo storico batte la
+ * deduzione dal catalogo. Quando il contesto resta ambiguo — è il caso di un insegnamento che
+ * compare sia in un blocco obbligatorio del secondo anno sia in una tabella del terzo — il valore
+ * è `null`: meglio non attribuire quei CFU a nessun gruppo che attribuirli al gruppo sbagliato.
+ */
+function buildCoverageGroups(
+  catalog: Catalog,
+  track: Track,
+  scenario: PlanScenario,
+  previousCompiledEntries: PreviousCompiledEntry[],
+  covered: Set<string>
+): Map<string, string | null> {
+  const coverage = new Map<string, string | null>();
+
+  // 3. Deduzione dal catalogo: vale solo se il percorso offre l'insegnamento in un unico gruppo.
+  for (const code of covered) {
+    const groups = courseGroupsForTrack(catalog, code, track);
+    coverage.set(code, groups.length === 1 ? groups[0] : null);
+  }
+
+  // 2. Storico dei piani compilati, dal più vecchio al più recente così che l'ultimo vinca.
+  const history = [...previousCompiledEntries].sort((a, b) =>
+    a.cycle.academicYear.localeCompare(b.cycle.academicYear)
+  );
+  for (const { entry } of history) {
+    if (!covered.has(entry.courseCode) || entry.entryKind === "external") continue;
+    coverage.set(entry.courseCode, courseGroup(catalog, entry.courseCode, track, entry.courseYear, entry.semester));
+  }
+
+  // 1. Piano corrente: è la scelta che lo studente sta facendo adesso.
+  for (const entry of scenario.entries) {
+    if (entry.entryKind === "external") {
+      coverage.set(entry.courseCode, null);
+      continue;
+    }
+    coverage.set(entry.courseCode, courseGroup(catalog, entry.courseCode, track, entry.courseYear, entry.semester));
+  }
+
+  return coverage;
+}
+
+export function validatePlanScenario(scenario: PlanScenario, context: PlanValidationContext): PlanValidationResult {
+  const { catalog, requestedAcademicYear, isFallback } = resolveCatalog(scenario.cycle.academicYear);
+  const track = scenario.cycle.track;
+  const studentYear = scenario.cycle.studentYear;
+  const referenceDate = context.asOf ?? planReferenceDate(scenario.cycle);
+  const career = buildCareerView(catalog, context.exams);
+  const issues: ValidationIssue[] = [];
+
+  // --- Versione dei dati ------------------------------------------------------
+  if (isFallback) {
+    issues.push(issue("catalog_missing", "warning", "Dati da verificare",
+      `Non esiste un catalogo per l'AA ${requestedAcademicYear}: sto usando quello ${catalog.academicYear}. Verifica ogni riga sul Regolamento ufficiale.`,
+      { source: "catalog/index.ts – resolveCatalog", provenance: "operational_to_verify", scope: "data_quality" }));
+  } else if (catalog.dataStatus === "to_verify") {
+    issues.push(issue("catalog_to_verify", "warning", "Dati da verificare",
+      `${catalog.dataStatusReason} Ricontrolla le righe sui Servizi Online prima di presentare il piano.`,
+      {
+        source: catalog.sources[0] ? `${catalog.sources[0].label}${catalog.sources[0].url ? ` – ${catalog.sources[0].url}` : ""}` : undefined,
+        provenance: "operational_to_verify",
+        scope: "data_quality",
+      }));
+  }
+
+  // --- Integrità delle voci ---------------------------------------------------
+  const seen = new Set<string>();
+  for (const entry of scenario.entries) {
+    if (seen.has(entry.courseCode)) {
+      issues.push(issue(`duplicate_${entry.courseCode}`, "error", "Duplicati",
+        `L'attività ${courseName(catalog, entry.courseCode)} (${entry.courseCode}) compare più di una volta nel piano.`,
+        { source: "§5 – un codice insegnamento non può contare due volte" }));
+    }
+    seen.add(entry.courseCode);
+
+    if (entry.entryKind === "external") continue;
+    const course = findCourse(catalog, entry.courseCode);
+    if (!course) {
+      issues.push(issue(`unknown_${entry.courseCode}`, "error", "Catalogo",
+        `Il codice ${entry.courseCode} non esiste nel catalogo AA ${catalog.academicYear}.`,
+        { source: `catalog AA ${catalog.academicYear}` }));
+      continue;
+    }
+    if (!isFinalExamModule(catalog, entry.courseCode) && !findOffering(catalog, entry.courseCode, track, entry.courseYear, entry.semester)) {
+      issues.push(issue(`offering_${entry.courseCode}`, "error", "Offerta",
+        `"${course.name}" non è offerto nel percorso ${track} all'anno ${entry.courseYear}, semestre ${entry.semester}.`,
+        { source: `catalog AA ${catalog.academicYear} – offerte del corso` }));
+    }
+  }
+
+  // --- Reinserimenti ----------------------------------------------------------
+  const annualInputs: AnnualPlanInputs = {
+    catalog, track, studentYear,
+    academicYear: scenario.cycle.academicYear,
+    exams: context.exams,
+    previousCompiledEntries: context.previousCompiledEntries,
+    asOf: referenceDate,
+  };
+  const requiredReinsertions = computeRequiredReinsertions(annualInputs);
+  const structuralChoices = classifyStructuralChoices(annualInputs);
+  const missingReinsertions = requiredReinsertions.filter(
+    (required) => !scenario.entries.some((entry) => isValidReinsertionEntry(entry, required.courseCode))
+  );
+  for (const required of missingReinsertions) {
+    const where = required.sourceAcademicYear ? `dal piano ${required.sourceAcademicYear}` : "dalla carriera";
+    issues.push(annualIssue(catalog, "reinsertions", `reinsertion_${required.courseCode}`, "error", "Da reinserire",
+      `"${required.name}" (${required.cfu} CFU) risulta già frequentato ${where} e non verbalizzato: va reinserito prima di aggiungere nuove frequenze.`));
+  }
+  for (const required of requiredReinsertions) {
+    if (required.reason !== "passed_unregistered") continue;
+    issues.push(annualIssue(catalog, "reinsertions", `unregistered_${required.courseCode}`, "warning", "Da reinserire",
+      `"${required.name}" è segnato superato ma non verbalizzato: finché non risulta in carriera va trattato come attività ancora aperta e reinserito.`));
+  }
+  for (const required of requiredReinsertions) {
+    if (!required.registeredAfterSubmission) continue;
+    issues.push(annualIssue(catalog, "contribution", `recovered_${required.courseCode}`, "info", "Da reinserire",
+      `"${required.name}" è stato verbalizzato dopo la presentazione del piano: resta nel piano ma non conta più per la contribuzione. Alla revisione del secondo semestre non potrai toglierlo se è del primo semestre.`));
+  }
+
+  // --- Regole strutturali del percorso ---------------------------------------
+  const effective = scenario.entries.filter((entry) => entry.position === "effective");
+  const planEffective = new Set(effective.map((entry) => entry.courseCode));
+  const planAll = new Set(scenario.entries.map((entry) => entry.courseCode));
+  const covered = new Set<string>([...career.registered, ...career.notRequired, ...planEffective]);
+  const externalEffective = effective.filter((entry) => entry.entryKind === "external");
+  const externalChoiceCfu = externalEffective.reduce((total, entry) => total + entryCfu(catalog, entry), 0);
+
+  const groupByPlanCode = new Map<string, string | null>(
+    scenario.entries.map((entry) => [
+      entry.courseCode,
+      entry.entryKind === "external" ? null : courseGroup(catalog, entry.courseCode, track, entry.courseYear, entry.semester),
+    ])
+  );
+  const coverageGroup = buildCoverageGroups(catalog, track, scenario, context.previousCompiledEntries, covered);
+
+  const ruleFindings = evaluateRules({
+    catalog, track, studentYear,
+    validationMode: scenario.cycle.validationMode,
+    covered, planEffective, planAll,
+    registered: career.registered,
+    externalChoiceCfu,
+    groupByPlanCode,
+    coverageGroup,
+    structuralChoices,
+  });
+
+  for (const found of ruleFindings) {
+    if (found.satisfied && !found.detail) continue;
+    const type: IssueSeverity = found.severityHint === "blocking" ? "error" : found.severityHint === "warning" ? "warning" : "advice";
+    issues.push(issue(`rule_${found.ruleId}`, type, found.label, found.detail, {
+      source: found.source,
+      provenance: found.provenance,
+      scope: found.dueNow ? "current_plan" : "future_years",
+      dueNow: found.dueNow,
+      dueByYear: found.dueByYear ?? undefined,
+    }));
+  }
+
+  // --- CFU annuali e contribuzione -------------------------------------------
+  const totals = computeAnnualTotals(catalog, scenario, career);
+  const [minCfu, maxCfu] = catalog.annual.cfuRange;
+  if (!context.annualCfuException && totals.newFrequencyCfu < minCfu) {
+    issues.push(annualIssue(catalog, "cfuRange", "annual_cfu_low", "error", "CFU dell'anno",
+      `Le nuove frequenze valgono ${totals.newFrequencyCfu} CFU: il minimo ordinario è ${minCfu}. Se sei in difetto di OFA o vicino alla laurea dichiara l'eccezione.`));
+  }
+  if (totals.newFrequencyCfu > maxCfu) {
+    issues.push(annualIssue(catalog, "cfuRange", "annual_cfu_high", "error", "CFU dell'anno",
+      `Le nuove frequenze valgono ${totals.newFrequencyCfu} CFU: il massimo ordinario è ${maxCfu}.`));
+  }
+  if (catalog.annual.reinsertionsCountTowardRange === null && totals.reinsertedCfu > 0) {
+    issues.push(annualIssue(catalog, "cfuRange", "reinsertion_range_unknown", "warning", "Dati da verificare",
+      `Il limite ${minCfu}–${maxCfu} CFU è applicato solo alle nuove frequenze (${totals.newFrequencyCfu} CFU). Non è documentato se i ${totals.reinsertedCfu} CFU reinseriti occupino lo stesso spazio: verificalo sui Servizi Online.`,
+      "data_quality"));
+  }
+  if (totals.supernumeraryCfu > catalog.annual.supernumeraryMaxCfu) {
+    issues.push(annualIssue(catalog, "supernumerary", "supernumerary_cfu", "error", "Soprannumero",
+      `CFU in soprannumero: ${totals.supernumeraryCfu}; il massimo sull'intero corso è ${catalog.annual.supernumeraryMaxCfu}.`));
+  }
+  if (externalChoiceCfu > catalog.annual.externalFreeChoiceMaxCfu) {
+    issues.push(annualIssue(catalog, "externalChoices", "external_cfu", "error", "Scelte autonome",
+      `Le attività fuori tabella valgono ${externalChoiceCfu} CFU; il massimo ammesso è ${catalog.annual.externalFreeChoiceMaxCfu}.`));
+  }
+
+  // --- Modifica del secondo semestre ----------------------------------------
+  if (scenario.cycle.validationMode === "second_semester_revision") {
+    validateSecondSemesterRevision(catalog, scenario, context, career, issues);
+  }
+
+  // --- Proiezione verso la laurea (consigli, non errori) --------------------
+  issues.push(...projectDegreeAdvice(catalog, scenario, career, track));
+
+  // --- Contesto -------------------------------------------------------------
+  const pspa = PSPA_BY_TRACK[track];
+  issues.push(issue("pspa_structure", "info", "Percorso",
+    `Milano Leonardo in presenza: anno 1 ${pspa.year1}, anno 2 ${pspa.year2}, anno 3 ${pspa.year3}.`,
+    { source: "§1 – regola strutturale campus/PSPA", scope: "context" }));
+  const approvalStatus = getApprovalStatus(scenario.entries);
+  issues.push(issue("approval", approvalStatus === "needs_commission_review" ? "warning" : "info", "Approvazione",
+    approvalStatus === "needs_commission_review"
+      ? "Il piano contiene attività fuori dalle tabelle preapprovate: serve la valutazione della commissione."
+      : "Tutte le scelte appartengono alle tabelle ufficiali: approvazione automatica alla scadenza.",
+    { source: "§2.3 – piano consigliato vs autonomo", scope: approvalStatus === "needs_commission_review" ? "current_plan" : "context" }));
+  issues.push(issue("disclaimer", "info", "Avvertenza", DISCLAIMER, { scope: "context" }));
+
+  // Lo stato del piano guarda solo ciò che riguarda quest'anno: un obbligo del terzo anno o un
+  // dubbio sui dati del Manifesto non rendono "non valido" il piano che si sta presentando.
+  const currentPlanIssues = issues.filter((item) => item.scope === "current_plan");
+  const hasError = currentPlanIssues.some((item) => item.type === "error");
+  const hasWarning = currentPlanIssues.some((item) => item.type === "warning");
+
+  return {
+    issues,
+    summary: {
+      ...totals,
+      academicYear: catalog.academicYear,
+      requestedAcademicYear,
+      dataStatus: catalog.dataStatus,
+      isFallbackCatalog: isFallback,
+      studentYear,
+      track,
+      approvalStatus,
+      status: hasError ? "invalid" : hasWarning ? "warning" : "valid",
+      contributionRule: catalog.annual.sources.contribution.source,
+      referenceDate,
+    },
+    sections: buildPlanSections(catalog, scenario, context.exams, track),
+    ruleFindings,
+    requiredReinsertions,
+    missingReinsertions,
+    structuralChoices,
+  };
+}
+
+export function buildPlanSections(
+  catalog: Catalog,
+  scenario: PlanScenario,
+  exams: CareerExamsMap,
+  track: Track
+): PlanSections {
+  const effective = scenario.entries.filter((entry) => entry.position === "effective");
+  return {
+    reinsertions: effective.filter(isReinsertion),
+    newFrequencies: effective.filter((entry) => !isReinsertion(entry)),
+    supernumerary: scenario.entries.filter((entry) => entry.position === "supernumerary"),
+    alreadyPassed: careerRows(catalog, exams, track).filter((row) => row.status === "passed_registered"),
+  };
+}
+
+function validateSecondSemesterRevision(
+  catalog: Catalog,
+  scenario: PlanScenario,
+  context: PlanValidationContext,
+  career: CareerView,
+  issues: ValidationIssue[]
+): void {
+  const revision = catalog.annual.secondSemesterRevision;
+  const declared = catalog.annual.sources.revision;
+  const base = context.baseRevisionScenario;
+  const options: IssueOptions = { source: declared.source, provenance: declared.provenance };
+
   if (!base || base.cycle.status !== "polimi_compiled" || scenario.cycle.revisionOfCycleId !== base.cycle.id) {
-    issues.push(issue("revision_no_base", "error", "Revisione", "La revisione deve essere collegata a uno scenario base realmente compilato su PoliMi."));
+    issues.push(issue("revision_no_base", "error", "Modifica 2° semestre",
+      "La modifica semestrale deve partire da un piano realmente compilato su PoliMi.", options));
     return;
   }
-  if (scenario.cycle.track !== base.cycle.track) issues.push(issue("revision_track", "error", "Revisione", "In revisione non è possibile cambiare percorso."));
+  if (!revision.allowTrackChange && scenario.cycle.track !== base.cycle.track) {
+    issues.push(issue("revision_track", "error", "Modifica 2° semestre",
+      "Nella modifica semestrale non puoi cambiare percorso/PSPA: quella scelta è fissata dalla presentazione annuale.", options));
+  }
+  if (scenario.cycle.studentYear !== base.cycle.studentYear || scenario.cycle.academicYear !== base.cycle.academicYear) {
+    issues.push(issue("revision_scope", "error", "Modifica 2° semestre",
+      "La modifica semestrale riguarda lo stesso anno accademico e lo stesso anno di corso del piano presentato.", options));
+  }
+
   const baseByCode = new Map(base.entries.map((entry) => [entry.courseCode, entry]));
   const currentByCode = new Map(scenario.entries.map((entry) => [entry.courseCode, entry]));
+
   for (const entry of scenario.entries) {
-    if (!baseByCode.has(entry.courseCode) && entry.semester !== 2) issues.push(issue(`revision_add_${entry.courseCode}`, "error", "Revisione", `Puoi aggiungere solo attività del secondo semestre: ${entry.courseCode}.`));
+    if (baseByCode.has(entry.courseCode)) continue;
+    if (entry.semester !== revision.editableSemester) {
+      issues.push(issue(`revision_add_${entry.courseCode}`, "error", "Modifica 2° semestre",
+        `Puoi aggiungere solo insegnamenti del ${revision.editableSemester}° semestre: "${courseName(catalog, entry.courseCode)}" è del ${entry.semester}° semestre.`, options));
+    }
   }
   for (const entry of base.entries) {
-    if (!currentByCode.has(entry.courseCode) && entry.semester !== 2) issues.push(issue(`revision_remove_${entry.courseCode}`, "error", "Revisione", `Puoi rimuovere solo attività del secondo semestre: ${entry.courseCode}.`));
+    if (currentByCode.has(entry.courseCode)) continue;
+    if (entry.semester !== revision.editableSemester) {
+      issues.push(issue(`revision_remove_${entry.courseCode}`, "error", "Modifica 2° semestre",
+        `Puoi rimuovere solo insegnamenti del ${revision.editableSemester}° semestre: "${courseName(catalog, entry.courseCode)}" è del ${entry.semester}° semestre e resta nel piano anche se lo hai superato.`, options));
+    }
   }
+
+  if (!revision.allowSelfCertification) {
+    const unregistered = scenario.entries.filter((entry) => career.passedUnregistered.has(entry.courseCode));
+    for (const entry of unregistered) {
+      issues.push(issue(`revision_selfcert_${entry.courseCode}`, "warning", "Modifica 2° semestre",
+        `"${courseName(catalog, entry.courseCode)}" è superato ma non ancora verbalizzato: nella modifica semestrale non puoi autocertificarlo, resta nel piano finché non compare in carriera.`, options));
+    }
+  }
+}
+
+/**
+ * Vincoli di laurea come proiezione informativa: carriera verbalizzata più attività del piano.
+ * Non bloccano il piano annuale, che per definizione copre un anno solo.
+ */
+function projectDegreeAdvice(
+  catalog: Catalog,
+  scenario: PlanScenario,
+  career: CareerView,
+  track: Track
+): ValidationIssue[] {
+  const advice: ValidationIssue[] = [];
+  const degree = catalog.degree;
+  const scope: IssueScope = "degree_projection";
+
+  const byCategory: Record<ActivityCategory, number> = { A: 0, B: 0, C: 0, D: 0, V: 0, T: 0 };
+  const areaTotals = {
+    base: { math_info_stats: 0, physics_chemistry: 0 },
+    characterizing: { electronics: 0, computer_engineering: 0, telecommunications: 0 },
+  };
+  let projectedCfu = 0;
+
+  const contributing = new Map<string, { cfu: number; category: ActivityCategory }>();
+  for (const code of career.registered) {
+    contributing.set(code, { cfu: courseCfu(catalog, code), category: activityCategory(catalog, code, track) });
+  }
+  for (const entry of scenario.entries) {
+    if (entry.position !== "effective" || contributing.has(entry.courseCode)) continue;
+    contributing.set(entry.courseCode, {
+      cfu: entryCfu(catalog, entry),
+      category: entry.entryKind === "external" ? "D" : activityCategory(catalog, entry.courseCode, track, entry.courseYear, entry.semester),
+    });
+  }
+
+  for (const [code, { cfu, category }] of contributing) {
+    projectedCfu += cfu;
+    byCategory[category] += cfu;
+    const area = catalog.areaByCode[code];
+    if (!area || category === "D") continue;
+    if (area.kind === "base") areaTotals.base[area.area] += cfu;
+    else areaTotals.characterizing[area.area] += cfu;
+  }
+
+  advice.push(issue("projection_total", "info", "Proiezione laurea",
+    `Carriera verbalizzata più piano corrente: ${projectedCfu} / ${degree.totalCfu} CFU effettivi.`,
+    { source: degree.sources.totalCfu, scope }));
+
+  for (const [category, minimum] of Object.entries(degree.categoryMinimums)) {
+    const typed = category as ActivityCategory;
+    if (byCategory[typed] < (minimum ?? 0)) {
+      advice.push(issue(`projection_category_${category}`, "advice", "Proiezione laurea",
+        `${CATEGORY_LABELS[category]} (${category}): ${byCategory[typed]} CFU sui ${minimum} minimi per laurearti. Recupererai il resto negli anni successivi.`,
+        { source: degree.sources.totalCfu, scope }));
+    }
+  }
+  if (byCategory.V !== degree.finalExamCfu) {
+    advice.push(issue("projection_final_exam", "advice", "Proiezione laurea",
+      `I moduli di prova finale proiettati valgono ${byCategory.V} CFU sui ${degree.finalExamCfu} richiesti.`,
+      { source: degree.sources.finalExam, scope }));
+  }
+  const [minFree, maxFree] = degree.freeChoiceCfuRange;
+  if (byCategory.D > maxFree) {
+    advice.push(issue("projection_free_choice", "advice", "Proiezione laurea",
+      `Le attività a scelta proiettate valgono ${byCategory.D} CFU: l'intervallo per la laurea è ${minFree}–${maxFree}.`,
+      { source: degree.sources.totalCfu, scope }));
+  }
+
+  for (const [area, rule] of Object.entries(degree.baseAreaRules)) {
+    const cfu = areaTotals.base[area as keyof typeof areaTotals.base];
+    if (cfu > rule.max) {
+      advice.push(issue(`projection_base_${area}`, "advice", "Proiezione laurea",
+        `${rule.label}: ${cfu} CFU, oltre il massimo ministeriale di ${rule.max}.`, { source: degree.sources.areas, scope }));
+    }
+  }
+  for (const [area, rule] of Object.entries(degree.characterizingAreaRules)) {
+    const cfu = areaTotals.characterizing[area as keyof typeof areaTotals.characterizing];
+    if (cfu > rule.max) {
+      advice.push(issue(`projection_char_${area}`, "advice", "Proiezione laurea",
+        `${rule.label}: ${cfu} CFU, oltre il massimo ministeriale di ${rule.max}.`, { source: degree.sources.areas, scope }));
+    }
+  }
+
+  return advice;
 }

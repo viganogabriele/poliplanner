@@ -23,7 +23,13 @@ export default function PwaInstallButton() {
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
-  if (!show) return null;
+  if (!show) {
+    return (
+      <p className="pwa-install-hint text-xs leading-relaxed text-muted">
+        Usa il menu del browser e scegli &quot;Installa app&quot; o &quot;Aggiungi alla schermata Home&quot;.
+      </p>
+    );
+  }
 
   const handleInstall = async () => {
     if (!promptRef.current) return;

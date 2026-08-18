@@ -1,135 +1,237 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Archive, ArchiveRestore, BookOpen, CheckCircle2, ChevronDown, ChevronUp, ClipboardCheck, CopyPlus, GitBranchPlus, GraduationCap, History, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
-import InfoButton from "@/components/ui/InfoButton";
-import { PIANO_GUIDE_SECTIONS, ACTIVITY_CATEGORY_DETAILS } from "@/lib/polimi/guide";
-import { getCourse } from "@/lib/polimi/courses";
-import { activityCategoryForCourse, sumCFU } from "@/lib/polimi/cfuCalc";
-import { getRequiredReinsertions, isValidReinsertionEntry, validatePlanScenario } from "@/lib/polimi/validation";
-import { ACADEMIC_YEAR, PROGRAM_IDENTITY, TRACKS } from "@/lib/polimi/constraints";
-import { originForAddedCourse, planEntriesToPiano, toDraftEntry } from "@/lib/polimi/planTransforms";
+import { BookOpen, CheckCircle2, FlaskConical, GraduationCap, History, Layers3, Save, ShieldCheck } from "lucide-react";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import {
-  duplicatePlanForNextAcademicYearAction,
+  courseOfferings,
+  findCourse,
+  getCatalog,
+  offeringSemester,
+  offeringYear,
+} from "@/lib/polimi/catalog";
+import { DISCLAIMER, type EntryPosition, type Track } from "@/lib/polimi/constraints";
+import type { CourseYear } from "@/lib/polimi/catalog/types";
+import { originForAddedCourse, toDraftEntry } from "@/lib/polimi/planModel";
+import { describeAdditionEffect } from "@/lib/polimi/courseAdvice";
+import { validatePlanScenario, type PlanValidationContext } from "@/lib/polimi/validation";
+import type { SimulationScenario } from "@/lib/polimi/simulator";
+import {
+  applySimulationScenarioAction,
   archivePlanCycleAction,
   createAnnualDraftAction,
   createSecondSemesterRevisionAction,
+  duplicatePlanForNextAcademicYearAction,
   markPlanCompiledOnPolimiAction,
   markPlanReadyAction,
   restorePlanCycleAction,
   savePlanDraftAction,
   setActivePlanCycleAction,
 } from "@/app/actions";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
-import ValidationPanel from "./ValidationPanel";
-import AddCourseModal from "./AddCourseModal";
+import CollapsibleSection from "./CollapsibleSection";
+import PlanHeader from "./PlanHeader";
+import PlanIssuesAside, { bucketIssues } from "./PlanIssuesAside";
+import ProposedPlanPanel from "./ProposedPlanPanel";
+import RequiredActionsPanel from "./RequiredActionsPanel";
+import {
+  LazyAddCourseModal,
+  LazyAllRulesPanel,
+  LazyCareerPanel,
+  LazyFutureYearsPanel,
+  LazyPlanGuide,
+  LazyScenarioHistoryPanel,
+  LazySimulatorPanel,
+} from "./lazyPanels";
 import { cn } from "@/lib/ui";
-import type { ExamsMap } from "@/lib/esami";
-import type { PlanCycle, PlanDraftPayload, PlanEntry, PlanScenario } from "@/lib/piano";
-import type { PreviousCompiledEntry } from "@/lib/polimi/validation";
-import type { EntryOrigin, EntryPosition, PlanStatus, PlanValidationMode, Track } from "@/lib/polimi/constraints";
+import type { CareerExamsMap } from "@/lib/polimi/career";
+import type { PlanCycle, PlanDraftPayload, PlanEntry, PlanScenario, PreviousCompiledEntry } from "@/lib/polimi/planModel";
+import type { NextYearAction } from "@/lib/pianoPage";
+
+/**
+ * Orchestratore della pagina Piano di Studi.
+ *
+ * L'ordine dei blocchi risponde, dall'alto verso il basso, alle domande dello studente:
+ * qual è il mio piano attivo e per quale AA, cosa è già chiuso in carriera, cosa devo reinserire,
+ * quali decisioni devo prendere adesso, quali corsi posso aggiungere e che effetto producono.
+ *
+ * Le funzioni avanzate (simulatore, catalogo, guida, storico, dettaglio regole, anteprima anni
+ * successivi) sono importate dinamicamente da `lazyPanels.ts`: il primo caricamento contiene solo
+ * riepilogo, azioni richieste e piano corrente.
+ */
 
 type Props = {
   initialScenario: PlanScenario;
   initialCycles: PlanCycle[];
   activeCycleId: number | null;
-  initialExams: ExamsMap;
+  initialExams: CareerExamsMap;
   previousCompiledEntries: PreviousCompiledEntry[];
   baseRevisionScenario: PlanScenario | null;
+  nextYearAction: NextYearAction | null;
+  asOf: string;
 };
 
-const SEMESTER_LABEL: Record<string | number, string> = { 1: "1° Semestre", 2: "2° Semestre", A: "Annuale" };
+type Feedback = { ok: boolean; text: string; details?: string[] };
 
-const TYPE_COLORS: Record<string, string> = {
-  A: "bg-sky-500/20 text-sky-300",
-  B: "bg-violet-500/20 text-violet-300",
-  C: "bg-amber-500/20 text-amber-300",
-  D: "bg-fuchsia-500/20 text-fuchsia-300",
-  V: "bg-emerald-500/20 text-emerald-300",
-  T: "bg-rose-500/20 text-rose-300",
-};
-
-const STATUS_LABEL: Record<PlanStatus, string> = {
-  draft: "Bozza",
-  ready: "Pronto da compilare",
-  polimi_compiled: "Compilato su PoliMi",
-};
-
-const MODE_LABEL: Record<PlanValidationMode, string> = {
-  annual_submission: "Compilazione annuale",
-  second_semester_revision: "Revisione secondo semestre",
-};
-
-const ORIGIN_LABEL: Record<EntryOrigin, string> = {
-  recommended: "Consigliato",
-  carried_over: "Reinserito",
-  new_frequency: "Nuova frequenza",
-  recovery_reinserted: "Recupero",
-  free_choice: "Scelta",
-};
-
-const REINSERTION_ORIGINS: EntryOrigin[] = ["carried_over", "recovery_reinserted"];
-
-export default function PianoClient({ initialScenario, initialCycles, activeCycleId, initialExams, previousCompiledEntries, baseRevisionScenario }: Props) {
+export default function PianoClient({
+  initialScenario,
+  initialCycles,
+  activeCycleId,
+  initialExams,
+  previousCompiledEntries,
+  baseRevisionScenario,
+  nextYearAction,
+  asOf,
+}: Props) {
   const router = useRouter();
   const [scenario, setScenario] = useState<PlanScenario>(initialScenario);
-  const [activeYear, setActiveYear] = useState<1 | 2 | 3>(initialScenario.cycle.studentYear);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [showValidation, setShowValidation] = useState(() => validatePlanScenario(initialScenario, {
-    exams: initialExams,
-    previousCompiledEntries,
-    baseRevisionScenario,
-  }).issues.some((issue) => issue.type === "error"));
+  const [cycles, setCycles] = useState<PlanCycle[]>(initialCycles);
+  const [currentActiveCycleId, setCurrentActiveCycleId] = useState(activeCycleId);
+  const [exams, setExams] = useState<CareerExamsMap>(initialExams);
   const [isPending, startTransition] = useTransition();
-  const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [showConfig, setShowConfig] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
-  const [showReinsertions, setShowReinsertions] = useState(false);
-  const [showSummary, setShowSummary] = useState(false);
-  const [showMoreActions, setShowMoreActions] = useState(false);
-  const [newAcademicYear, setNewAcademicYear] = useState(initialScenario.cycle.academicYear);
-  const [newStudentYear, setNewStudentYear] = useState<1 | 2 | 3>(initialScenario.cycle.studentYear);
-  const [newTrack, setNewTrack] = useState<Track>(initialScenario.cycle.track);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
 
-  const validation = useMemo(() => validatePlanScenario(scenario, {
-    exams: initialExams,
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [careerOpen, setCareerOpen] = useState(false);
+  const [simulatorOpen, setSimulatorOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [futureOpen, setFutureOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+
+  const catalog = useMemo(() => getCatalog(scenario.cycle.academicYear), [scenario.cycle.academicYear]);
+  const context = useMemo<PlanValidationContext>(() => ({
+    exams,
     previousCompiledEntries,
     baseRevisionScenario,
-  }), [scenario, initialExams, previousCompiledEntries, baseRevisionScenario]);
+    asOf,
+  }), [exams, previousCompiledEntries, baseRevisionScenario, asOf]);
+  const validation = useMemo(() => validatePlanScenario(scenario, context), [scenario, context]);
 
-  const piano = useMemo(() => planEntriesToPiano(scenario.entries), [scenario.entries]);
-  const requiredReinsertions = useMemo(() => getRequiredReinsertions(previousCompiledEntries, initialExams), [previousCompiledEntries, initialExams]);
-  const missingReinsertions = requiredReinsertions.filter((required) => !scenario.entries.some((entry) => isValidReinsertionEntry(entry, required.courseCode)));
-  const errors = validation.issues.filter((issue) => issue.type === "error");
-  const warnings = validation.issues.filter((issue) => issue.type === "warning");
-  const reinsertionsExpanded = missingReinsertions.length > 0 || showReinsertions;
-  const summaryExpanded = errors.length > 0 || showSummary;
   const isHistorical = scenario.cycle.status === "polimi_compiled" || Boolean(scenario.cycle.archivedAt);
-  const compiledCycles = new Set(previousCompiledEntries.map(({ cycle }) => cycle.id).filter(Boolean));
-  const needsHistoricalSetup = !isHistorical && scenario.cycle.studentYear > 1 && compiledCycles.size === 0;
+  const revisionMode = scenario.cycle.validationMode === "second_semester_revision";
+  const editableSemester = catalog.annual.secondSemesterRevision.editableSemester;
+  const buckets = bucketIssues(validation);
+  const futureCount = validation.issues.filter((issue) => issue.scope === "future_years").length;
 
-  const yearEntries = scenario.entries.filter((entry) => entry.courseYear === activeYear && entry.position === "effective");
-  const supernumeraryEntries = scenario.entries.filter((entry) => entry.position === "supernumerary");
+  const registeredCodes = useMemo(
+    () => new Set(Object.entries(exams).filter(([, exam]) => exam.status === "passed_registered").map(([code]) => code)),
+    [exams]
+  );
+  const planCodes = useMemo(() => new Set(scenario.entries.map((entry) => entry.courseCode)), [scenario.entries]);
+  const reinsertionCodes = useMemo(
+    () => new Set(validation.requiredReinsertions.map((item) => item.courseCode)),
+    [validation.requiredReinsertions]
+  );
 
-  const setDirtyScenario = (updater: (prev: PlanScenario) => PlanScenario) => {
+  // ---------------------------------------------------------------- mutazioni locali
+
+  const markDirty = (updater: (prev: PlanScenario) => PlanScenario) => {
     setScenario((prev) => {
       const next = updater(prev);
       return {
         ...next,
-        cycle: {
-          ...next.cycle,
-          status: next.cycle.status === "draft" ? "draft" : "draft",
-          approvalStatus: null,
-          compiledOnPolimiAt: null,
-          updatedAt: new Date().toISOString(),
-        },
+        cycle: { ...next.cycle, status: "draft", approvalStatus: null, updatedAt: new Date().toISOString() },
       };
     });
   };
+
+  const buildEntry = useCallback((code: string, reinserted: boolean, position: EntryPosition = "effective"): PlanEntry | null => {
+    const course = findCourse(catalog, code);
+    if (!course) return null;
+    const courseYear = offeringYear(catalog, code, scenario.cycle.track, scenario.cycle.studentYear);
+    return {
+      id: null,
+      cycleId: scenario.cycle.id,
+      courseCode: code,
+      courseYear,
+      semester: offeringSemester(catalog, code, scenario.cycle.track, courseYear),
+      entryKind: "catalog",
+      externalName: null,
+      externalCfu: null,
+      position,
+      origin: reinserted ? "recovery_reinserted" : originForAddedCourse(catalog, code, scenario.cycle.track),
+      isNewFrequency: !reinserted,
+      feeCounted: !reinserted,
+      createdAt: new Date().toISOString(),
+    };
+  }, [catalog, scenario.cycle.id, scenario.cycle.track, scenario.cycle.studentYear]);
+
+  /** Un reinserimento riporta la frequenza storica: usa anno e semestre di allora, non quelli di ora. */
+  const addReinsertion = (code: string) => {
+    const required = validation.requiredReinsertions.find((item) => item.courseCode === code);
+    markDirty((prev) => {
+      const base = buildEntry(code, true);
+      if (!base) return prev;
+      const entry: PlanEntry = required
+        ? { ...base, courseYear: required.courseYear, semester: required.semester, position: required.position }
+        : base;
+      if (prev.entries.some((item) => item.courseCode === code)) {
+        return {
+          ...prev,
+          entries: prev.entries.map((item) => (item.courseCode === code
+            ? { ...item, ...entry, id: item.id, cycleId: item.cycleId, createdAt: item.createdAt }
+            : item)),
+        };
+      }
+      return { ...prev, entries: [...prev.entries, entry] };
+    });
+  };
+
+  const addCourse = (code: string) => {
+    const before = validation;
+    let added: PlanScenario | null = null;
+    markDirty((prev) => {
+      if (prev.entries.some((entry) => entry.courseCode === code)) return prev;
+      const main = buildEntry(code, false);
+      if (!main) return prev;
+      const entries = [...prev.entries, main];
+
+      // Il modulo di prova finale segue il corso solo nel contesto in cui il Regolamento
+      // lo attesta: fuori da quello il validatore emette una verifica, non un'aggiunta.
+      const course = findCourse(catalog, code);
+      for (const linked of course?.linkedExams ?? []) {
+        if (entries.some((entry) => entry.courseCode === linked.code)) continue;
+        const offering = courseOfferings(course!).find(
+          (candidate) => candidate.year === main.courseYear
+            && candidate.tracks.includes(prev.cycle.track)
+            && candidate.linkedModules?.includes(linked.code)
+        );
+        if (!offering) continue;
+        const linkedEntry = buildEntry(linked.code, false);
+        if (linkedEntry) entries.push({ ...linkedEntry, courseYear: offering.year });
+      }
+      added = { ...prev, entries };
+      return added;
+    });
+
+    // Feedback breve subito dopo l'aggiunta, calcolato confrontando le due validazioni.
+    setTimeout(() => {
+      setScenario((current) => {
+        const after = validatePlanScenario(current, context);
+        const effect = describeAdditionEffect(catalog, code, before, after);
+        setFeedback({ ok: true, text: effect.headline, details: effect.details });
+        return current;
+      });
+    }, 0);
+  };
+
+  const removeEntry = (code: string) => {
+    const course = findCourse(catalog, code);
+    const toRemove = new Set([code, ...(course?.linkedExams.map((linked) => linked.code) ?? [])]);
+    markDirty((prev) => ({ ...prev, entries: prev.entries.filter((entry) => !toRemove.has(entry.courseCode)) }));
+  };
+
+  const setPosition = (code: string, position: EntryPosition) => {
+    markDirty((prev) => ({
+      ...prev,
+      entries: prev.entries.map((entry) => (entry.courseCode === code ? { ...entry, position } : entry)),
+    }));
+  };
+
+  // ---------------------------------------------------------------- persistenza
 
   const payloadFor = (source: PlanScenario): PlanDraftPayload => ({
     cycleId: source.cycle.id,
@@ -137,742 +239,387 @@ export default function PianoClient({ initialScenario, initialCycles, activeCycl
     studentYear: source.cycle.studentYear,
     track: source.cycle.track,
     validationMode: source.cycle.validationMode,
-    status: source.cycle.status === "polimi_compiled" ? "draft" : source.cycle.status,
     entries: source.entries.map(toDraftEntry),
   });
 
-  const persistDraft = async (source = scenario) => {
+  const persist = async (source = scenario) => {
     const result = await savePlanDraftAction(payloadFor(source));
     if (!result.ok) {
-      setSaveMsg({ ok: false, text: result.error ?? "Errore salvataggio." });
+      setFeedback({ ok: false, text: result.error });
       return null;
     }
     setScenario(result.data);
-    setSaveMsg({ ok: true, text: "Bozza salvata." });
+    setFeedback({ ok: true, text: "Bozza salvata." });
     return result.data;
   };
 
-  const addEntry = (code: string, origin: EntryOrigin = originForAddedCourse(code), position: EntryPosition = "effective") => {
-    const course = getCourse(code);
-    if (!course) return;
-    setDirtyScenario((prev) => {
-      const existing = new Set(prev.entries.map((entry) => entry.courseCode));
-      const createdAt = new Date().toISOString();
-      const entries: PlanEntry[] = [...prev.entries];
-      if (existing.has(code) && REINSERTION_ORIGINS.includes(origin)) {
-        return {
-          ...prev,
-          entries: prev.entries.map((entry) => entry.courseCode === code
-            ? { ...entry, position: "effective", origin, isNewFrequency: false, feeCounted: false }
-            : entry
-          ),
-        };
-      }
-      if (!existing.has(code)) {
-        entries.push({
-          id: null,
-          cycleId: prev.cycle.id,
-          courseCode: code,
-          courseYear: course.year,
-          semester: course.semester === "A" ? 1 : course.semester,
-          entryKind: "catalog",
-          externalName: null,
-          externalCfu: null,
-          position,
-          origin,
-          isNewFrequency: true,
-          feeCounted: true,
-          createdAt,
-        });
-      }
-      course.linkedExams.forEach((linked) => {
-        const linkedCourse = getCourse(linked.code);
-        if (!existing.has(linked.code) && linkedCourse) {
-          entries.push({
-            id: null,
-            cycleId: prev.cycle.id,
-            courseCode: linked.code,
-            courseYear: linkedCourse.year,
-            semester: linkedCourse.semester === "A" ? 1 : linkedCourse.semester,
-            entryKind: "catalog",
-            externalName: null,
-            externalCfu: null,
-            position,
-            origin,
-            isNewFrequency: true,
-            feeCounted: true,
-            createdAt,
-          });
-        }
-      });
-      return { ...prev, entries };
-    });
-  };
+  const save = () => startTransition(async () => { await persist(); });
 
-  const removeEntry = (code: string) => {
-    const course = getCourse(code);
-    const linked = course?.linkedExams.map((le) => le.code) ?? [];
-    const toRemove = new Set([code, ...linked]);
-    setDirtyScenario((prev) => ({ ...prev, entries: prev.entries.filter((entry) => !toRemove.has(entry.courseCode)) }));
-  };
+  const markReady = () => startTransition(async () => {
+    const saved = await persist();
+    if (!saved?.cycle.id) return;
+    const result = await markPlanReadyAction(saved.cycle.id);
+    if (!result.ok) return setFeedback({ ok: false, text: result.error });
+    setScenario(result.data);
+    setFeedback({ ok: true, text: "Piano pronto: ora copialo nei Servizi Online PoliMi." });
+  });
 
-  const setPosition = (code: string, position: EntryPosition) => {
-    setDirtyScenario((prev) => ({
-      ...prev,
-      entries: prev.entries.map((entry) => entry.courseCode === code ? { ...entry, position } : entry),
-    }));
-  };
+  const markCompiled = () => startTransition(async () => {
+    if (!scenario.cycle.id || scenario.cycle.status !== "ready") {
+      return setFeedback({ ok: false, text: "Prima verifica il piano e marcalo come pronto." });
+    }
+    const result = await markPlanCompiledOnPolimiAction(scenario.cycle.id);
+    if (!result.ok) return setFeedback({ ok: false, text: result.error });
+    setScenario(result.data);
+    setFeedback({ ok: true, text: "Piano registrato come compilato su PoliMi." });
+  });
 
-  const save = () => {
+  const goToScenario = (cycleId: number) => startTransition(() => {
+    router.push(`/piano?scenario=${cycleId}`);
+  });
+
+  const createAnnual = (academicYear: string, studentYear: CourseYear, track: Track) =>
     startTransition(async () => {
-      await persistDraft();
-      setTimeout(() => setSaveMsg(null), 3000);
-    });
-  };
-
-  const verify = () => {
-    setShowValidation(true);
-    setSaveMsg({ ok: errors.length === 0, text: errors.length === 0 ? "Scenario compilabile secondo i vincoli duri." : `Scenario non pronto: ${errors.length} errori bloccanti.` });
-  };
-
-  const markReady = () => {
-    startTransition(async () => {
-      const saved = await persistDraft();
-      if (!saved?.cycle.id) return;
-      const result = await markPlanReadyAction(saved.cycle.id);
-      if (result.ok) {
-        setScenario(result.data);
-        setSaveMsg({ ok: true, text: "Scenario marcato come pronto." });
-      } else {
-        setSaveMsg({ ok: false, text: result.error ?? "Scenario non pronto." });
-      }
-    });
-  };
-
-  const markCompiled = () => {
-    startTransition(async () => {
-      if (!scenario.cycle.id || scenario.cycle.status !== "ready") {
-        setSaveMsg({ ok: false, text: "Prima valida e marca lo scenario come pronto." });
-        return;
-      }
-      const result = await markPlanCompiledOnPolimiAction(scenario.cycle.id);
-      if (result.ok) {
-        setScenario(result.data);
-        setSaveMsg({ ok: true, text: "Scenario segnato come compilato su PoliMi." });
-      } else {
-        setSaveMsg({ ok: false, text: result.error ?? "Impossibile segnare come compilato." });
-      }
-    });
-  };
-
-  const duplicateNextYear = () => {
-    startTransition(async () => {
-      const saved = isHistorical ? scenario : await persistDraft();
-      if (!saved?.cycle.id) return;
-      const result = await duplicatePlanForNextAcademicYearAction(saved.cycle.id);
-      if (result.ok) {
-        setScenario(result.data);
-        setActiveYear(result.data.cycle.studentYear);
-        setSaveMsg({ ok: true, text: `Creato scenario ${result.data.cycle.academicYear}.` });
-      } else {
-        setSaveMsg({ ok: false, text: result.error ?? "Duplicazione non riuscita." });
-      }
-    });
-  };
-
-  const openScenario = (cycleId: number) => router.push(`/piano?scenario=${cycleId}`);
-
-  const createAnnual = () => {
-    startTransition(async () => {
-      const result = await createAnnualDraftAction(newAcademicYear, newStudentYear, newTrack);
-      if (!result.ok) return setSaveMsg({ ok: false, text: result.error });
+      const result = await createAnnualDraftAction(academicYear, studentYear, track);
+      if (!result.ok) return setFeedback({ ok: false, text: result.error });
       router.push(`/piano?scenario=${result.data.cycle.id}`);
-      router.refresh();
     });
+
+  const duplicateNextYear = () => startTransition(async () => {
+    if (!scenario.cycle.id) return;
+    const result = await duplicatePlanForNextAcademicYearAction(scenario.cycle.id);
+    if (!result.ok) return setFeedback({ ok: false, text: result.error });
+    router.push(`/piano?scenario=${result.data.cycle.id}`);
+  });
+
+  const createRevision = () => startTransition(async () => {
+    if (!scenario.cycle.id) return;
+    const result = await createSecondSemesterRevisionAction(scenario.cycle.id);
+    if (!result.ok) return setFeedback({ ok: false, text: result.error });
+    router.push(`/piano?scenario=${result.data.cycle.id}`);
+  });
+
+  const cycleAction = (
+    action: (id: number) => Promise<{ ok: true; data: PlanScenario } | { ok: false; error: string }>,
+    label: string,
+    options?: { redirect?: string; activates?: boolean; clearsActive?: boolean }
+  ) =>
+    startTransition(async () => {
+      if (!scenario.cycle.id) return;
+      const result = await action(scenario.cycle.id);
+      if (!result.ok) return setFeedback({ ok: false, text: result.error ?? "Operazione non riuscita." });
+      setScenario(result.data);
+      setCycles((previous) => previous.map((cycle) => cycle.id === result.data.cycle.id ? result.data.cycle : cycle));
+      if (options?.activates) setCurrentActiveCycleId(result.data.cycle.id);
+      if (options?.clearsActive && scenario.cycle.id === currentActiveCycleId) setCurrentActiveCycleId(null);
+      setFeedback({ ok: true, text: label });
+      if (options?.redirect) router.push(options.redirect);
+    });
+
+  /** L'azione della testata: apre il piano dell'anno da pianificare, o lo crea. */
+  const handleNextYear = () => {
+    if (!nextYearAction) return;
+    if (nextYearAction.kind === "open_existing") return goToScenario(nextYearAction.cycleId);
+    if (nextYearAction.kind === "continue_from_compiled") return duplicateNextYear();
+    createAnnual(nextYearAction.academicYear, nextYearAction.studentYear, nextYearAction.track);
   };
 
-  const activateScenario = () => {
-    if (!scenario.cycle.id) return;
-    startTransition(async () => {
-      const result = await setActivePlanCycleAction(scenario.cycle.id);
-      if (!result.ok) return setSaveMsg({ ok: false, text: result.error });
-      setSaveMsg({ ok: true, text: "Scenario impostato come attivo." });
-      router.refresh();
+  /**
+   * Conferma di uno scenario: una sola azione, una sola transazione, una sola invalidazione.
+   * Il risultato torna già letto, quindi non serve un `router.refresh()` in coda.
+   */
+  const applySimulation = (simulation: SimulationScenario) => startTransition(async () => {
+    const withChanges = applyScenarioLocally(simulation);
+    const result = await applySimulationScenarioAction({
+      outcomes: simulation.assumptions.map((assumption) => ({
+        code: assumption.courseCode,
+        status: assumption.outcome === "registered" ? "passed_registered" : "not_passed",
+      })),
+      draft: payloadFor(withChanges),
     });
+    if (!result.ok) return setFeedback({ ok: false, text: result.error });
+    setScenario(result.data.scenario);
+    setExams(result.data.exams);
+    setSimulatorOpen(false);
+    setFeedback({
+      ok: true,
+      text: simulation.assumptions.length > 0
+        ? `Scenario "${simulation.label}" applicato a carriera e piano.`
+        : "Insegnamento aggiunto e piano salvato.",
+    });
+  });
+
+  /** Calcola lo scenario risultante senza toccare lo stato: serve per inviarlo in un colpo solo. */
+  const applyScenarioLocally = (simulation: SimulationScenario): PlanScenario => {
+    const removals = new Set(simulation.removals ?? []);
+    let entries = scenario.entries.filter((entry) => !removals.has(entry.courseCode));
+    for (const code of simulation.additions ?? []) {
+      if (entries.some((entry) => entry.courseCode === code)) continue;
+      const entry = buildEntry(code, false);
+      if (entry) entries = [...entries, entry];
+    }
+    return { ...scenario, entries };
   };
 
-  const archiveScenario = () => {
-    if (!scenario.cycle.id) return;
-    startTransition(async () => {
-      const result = await archivePlanCycleAction(scenario.cycle.id);
-      if (!result.ok) return setSaveMsg({ ok: false, text: result.error });
-      router.push("/piano");
-      router.refresh();
-    });
-  };
-
-  const restoreScenario = () => {
-    if (!scenario.cycle.id) return;
-    startTransition(async () => {
-      const result = await restorePlanCycleAction(scenario.cycle.id);
-      if (!result.ok) return setSaveMsg({ ok: false, text: result.error });
-      setSaveMsg({ ok: true, text: "Scenario ripristinato." });
-      router.refresh();
-    });
-  };
-
-  const createRevision = () => {
-    if (!scenario.cycle.id) return;
-    startTransition(async () => {
-      const result = await createSecondSemesterRevisionAction(scenario.cycle.id);
-      if (!result.ok) return setSaveMsg({ ok: false, text: result.error });
-      router.push(`/piano?scenario=${result.data.cycle.id}`);
-      router.refresh();
-    });
-  };
+  // ---------------------------------------------------------------- render
 
   return (
-    <div className="flex min-h-[calc(100vh-10rem)] overflow-hidden rounded-panel border border-border bg-background-soft shadow-card">
-      <div className="flex-1 overflow-y-auto p-4 pb-8 space-y-5 sm:p-5">
-        <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Scenari del piano</CardTitle>
-              <p className="mt-1 text-xs text-muted">Consulta gli storici senza cambiare il piano usato da dashboard ed esami.</p>
-            </div>
-            {scenario.cycle.id === activeCycleId && <Badge variant="active">Attivo</Badge>}
-          </CardHeader>
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-            <select
-              aria-label="Scenario da consultare"
-              value={scenario.cycle.id ?? ""}
-              onChange={(event) => openScenario(Number(event.target.value))}
-              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none"
-            >
-              {scenario.cycle.id === null && <option value="">Nuovo piano consigliato non salvato</option>}
-              {initialCycles.map((cycle) => (
-                <option key={cycle.id} value={cycle.id ?? ""}>
-                  {cycle.academicYear} · anno {cycle.studentYear} · {cycle.track} · {STATUS_LABEL[cycle.status]}{cycle.archivedAt ? " · archiviato" : ""}{cycle.id === activeCycleId ? " · attivo" : ""}
-                </option>
-              ))}
-            </select>
-            <div className="flex flex-wrap gap-2">
-              {scenario.cycle.id !== null && scenario.cycle.status !== "polimi_compiled" && !scenario.cycle.archivedAt && scenario.cycle.id !== activeCycleId && (
-                <Button variant="secondary" size="sm" onClick={activateScenario} disabled={isPending}>Imposta attivo</Button>
-              )}
-              {scenario.cycle.id !== null && !scenario.cycle.archivedAt && (
-                <Button variant="ghost" size="sm" onClick={archiveScenario} disabled={isPending}><Archive className="size-4" />Archivia</Button>
-              )}
-              {scenario.cycle.id !== null && scenario.cycle.archivedAt && (
-                <Button variant="ghost" size="sm" onClick={restoreScenario} disabled={isPending}><ArchiveRestore className="size-4" />Ripristina</Button>
-              )}
-              {scenario.cycle.status === "polimi_compiled" && !scenario.cycle.archivedAt && (
-                <Button variant="ghost" size="sm" onClick={createRevision} disabled={isPending}><GitBranchPlus className="size-4" />Revisione 2° semestre</Button>
-              )}
-            </div>
+    <div className="flex rounded-panel border border-border bg-background-soft shadow-card xl:min-h-[calc(100vh-10rem)] xl:overflow-hidden">
+      <div className="min-w-0 flex-1 space-y-5 p-4 pb-8 sm:p-5 xl:overflow-y-auto">
+        <PlanHeader
+          validation={validation}
+          planStatus={scenario.cycle.status}
+          validationMode={scenario.cycle.validationMode}
+          isActive={scenario.cycle.id !== null && scenario.cycle.id === currentActiveCycleId}
+          isSaved={scenario.cycle.id !== null && !scenario.cycle.isVirtual}
+          dataStatusReason={catalog.dataStatus === "to_verify" ? catalog.dataStatusReason : null}
+          nextYearAction={nextYearAction}
+          onNextYear={handleNextYear}
+          pending={isPending}
+        />
+
+        {revisionMode && (
+          <div className="flex items-start gap-3 rounded-xl border border-accent/30 bg-accent/5 px-4 py-3">
+            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-accent" />
+            <p className="text-xs leading-relaxed text-secondary">
+              <strong className="text-primary">Modifica del {editableSemester}° semestre.</strong> Puoi aggiungere o
+              togliere solo insegnamenti del {editableSemester}° semestre di questo anno accademico. Percorso e primo
+              semestre sono bloccati, e un esame superato ma non ancora verbalizzato non può essere autocertificato.
+            </p>
           </div>
-          <div className="mt-4 grid gap-2 border-t border-border pt-4 sm:grid-cols-4">
-            <input aria-label="Anno accademico nuova bozza" value={newAcademicYear} onChange={(e) => setNewAcademicYear(e.target.value)} className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary" />
-            <select aria-label="Anno studente nuova bozza" value={newStudentYear} onChange={(e) => setNewStudentYear(Number(e.target.value) as 1 | 2 | 3)} className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary">
-              <option value={1}>Anno 1</option><option value={2}>Anno 2</option><option value={3}>Anno 3</option>
-            </select>
-            <select aria-label="Percorso nuova bozza" value={newTrack} onChange={(e) => setNewTrack(e.target.value as Track)} className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary">
-              <option value="I3I">I3I</option><option value="I3C">I3C</option>
-            </select>
-            <Button variant="primary" onClick={createAnnual} disabled={isPending}><Plus className="size-4" />Crea bozza annuale</Button>
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>{PROGRAM_IDENTITY.courseName} {PROGRAM_IDENTITY.courseCode}</CardTitle>
-              <p className="mt-1 text-xs text-muted">Planner sempre aperto per preparare la compilazione PoliMi.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <InfoButton title="Come funziona il Piano di Studi">
-                <p>Apri la guida per capire stati, CFU, reinserimenti e categorie del piano.</p>
-              </InfoButton>
-              <Button variant="ghost" size="sm" onClick={() => setShowGuide((value) => !value)} aria-expanded={showGuide}>
-                <BookOpen className="size-4" />
-                Guida
-              </Button>
-              <Badge variant={scenario.cycle.status === "polimi_compiled" ? "success" : scenario.cycle.status === "ready" ? "active" : "neutral"}>
-                {STATUS_LABEL[scenario.cycle.status]}
-              </Badge>
-            </div>
-          </CardHeader>
-
-          <button
-            type="button"
-            onClick={() => setShowConfig(v => !v)}
-            className="mb-3 flex items-center gap-2 text-xs text-muted hover:text-primary transition"
-          >
-            {showConfig ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-            {showConfig ? "Nascondi impostazioni" : `${scenario.cycle.academicYear} · Anno ${scenario.cycle.studentYear} · ${scenario.cycle.track}`}
-          </button>
-
-          <AnimatePresence>
-            {showConfig && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden"
-              >
-                <div className="grid gap-3 md:grid-cols-4">
-            <label className="space-y-1">
-              <span className="text-xs font-semibold text-muted">AA pianificato</span>
-              <input
-                value={scenario.cycle.academicYear}
-                onChange={(e) => setDirtyScenario((prev) => ({ ...prev, cycle: { ...prev.cycle, academicYear: e.target.value } }))}
-                placeholder={ACADEMIC_YEAR}
-                disabled={isHistorical}
-                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none disabled:opacity-60"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-semibold text-muted">Anno studente</span>
-              <select
-                value={scenario.cycle.studentYear}
-                disabled={isHistorical}
-                onChange={(e) => {
-                  const year = Number(e.target.value) as 1 | 2 | 3;
-                  setActiveYear(year);
-                  setDirtyScenario((prev) => ({ ...prev, cycle: { ...prev.cycle, studentYear: year } }));
-                }}
-                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none disabled:opacity-60"
-              >
-                <option value={1}>Anno 1</option>
-                <option value={2}>Anno 2</option>
-                <option value={3}>Anno 3</option>
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-semibold text-muted">Percorso</span>
-              <select
-                value={scenario.cycle.track}
-                disabled={isHistorical}
-                onChange={(e) => setDirtyScenario((prev) => ({ ...prev, cycle: { ...prev.cycle, track: e.target.value as Track } }))}
-                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none disabled:opacity-60"
-              >
-                {(Object.values(TRACKS) as { code: Track; label: string }[]).map((track) => (
-                  <option key={track.code} value={track.code}>{track.label}</option>
-                ))}
-              </select>
-            </label>
-            <div className="space-y-1">
-              <span className="text-xs font-semibold text-muted">Validazione</span>
-              <p className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary">
-                {MODE_LABEL[scenario.cycle.validationMode]}
-              </p>
-            </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </Card>
-
-        <AnimatePresence initial={false}>
-          {showGuide && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="overflow-hidden"
-            >
-              <Card className="border-accent/25 bg-accent/5">
-                <CardHeader>
-                  <div>
-                    <CardTitle>Guida al Piano di Studi</CardTitle>
-                    <p className="mt-1 text-sm text-muted">Come interpretare questo planner prima di copiare il piano nei Servizi Online.</p>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => setShowGuide(false)}>Chiudi</Button>
-                </CardHeader>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {PIANO_GUIDE_SECTIONS.map((section) => (
-                    <section key={section.title} className="rounded-xl border border-border bg-surface/60 p-4">
-                      <h3 className="text-sm font-semibold text-primary">{section.title}</h3>
-                      <p className="mt-1 text-sm leading-relaxed text-secondary">{section.content}</p>
-                    </section>
-                  ))}
-                </div>
-              </Card>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        )}
 
         {isHistorical && (
-          <Card className="border-success/30 bg-[linear-gradient(180deg,rgba(33,181,115,0.12),rgba(10,15,20,0.9))]">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-start gap-3">
-                <span className="grid size-10 shrink-0 place-items-center rounded-full bg-success/15 text-success">
-                  <History className="size-5" />
-                </span>
-                <div>
-                  <h3 className="text-sm font-semibold text-primary">{scenario.cycle.status === "polimi_compiled" ? "Storico PoliMi congelato" : "Scenario archiviato"}</h3>
-                  <p className="mt-1 text-sm text-muted">{scenario.cycle.status === "polimi_compiled" ? "Questo scenario conta come piano realmente compilato." : "Questo scenario è disponibile in sola lettura finché non viene ripristinato."}</p>
-                </div>
-              </div>
-              {scenario.cycle.status === "polimi_compiled" && <Button variant="primary" onClick={duplicateNextYear} disabled={isPending}>
-                <CopyPlus className="size-4" />
-                Crea bozza prossimo AA
-              </Button>}
-            </div>
-          </Card>
+          <div className="rounded-xl border border-success/30 bg-success/5 px-4 py-3">
+            <p className="text-sm font-semibold text-primary">
+              {scenario.cycle.status === "polimi_compiled" ? "Storico congelato" : "Scenario archiviato"}
+            </p>
+            <p className="mt-0.5 text-xs text-muted">
+              {scenario.cycle.status === "polimi_compiled"
+                ? "Questo piano conta come realmente presentato: da qui si calcolano le frequenze già acquisite. È in sola lettura."
+                : "Disponibile in sola lettura finché non lo ripristini dallo storico."}
+            </p>
+          </div>
         )}
 
-        {needsHistoricalSetup && (
-          <Card className="border-warning/40 bg-[linear-gradient(180deg,rgba(245,181,76,0.12),rgba(10,15,20,0.9))]">
-            <div className="flex items-start gap-3">
-              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-warning/15 text-warning">
-                <AlertTriangle className="size-5" />
-              </span>
-              <div>
-                <h3 className="text-sm font-semibold text-primary">Storico PoliMi precedente mancante</h3>
-                <p className="mt-1 text-sm text-muted">Per calcolare gli arretrati del secondo o terzo anno serve prima uno scenario marcato come compilato su PoliMi.</p>
-              </div>
-            </div>
-          </Card>
-        )}
+        <RequiredActionsPanel
+          catalog={catalog}
+          validation={validation}
+          readOnly={isHistorical}
+          onAddReinsertion={addReinsertion}
+          onAddCourse={addCourse}
+          onOpenCatalog={() => setCatalogOpen(true)}
+        />
 
-        {!isHistorical && (
-          <Card className="bg-surface/70">
-            <div className="grid gap-3 md:grid-cols-3">
-              <FlowStep label="1. Storico reale" done={compiledCycles.size > 0} text={compiledCycles.size > 0 ? `${compiledCycles.size} piano/i PoliMi usati per i reinserimenti` : "Assente: gli arretrati non sono ancora automatici"} />
-              <FlowStep label="2. Esami registrati" done={Object.values(initialExams).some((exam) => exam.status === "passed_registered")} text="Solo i verbalizzati scalano recuperi e media" />
-              <FlowStep label="3. Bozza futura" done={errors.length === 0} text={errors.length === 0 ? "Pronta per essere copiata nei Servizi Online" : `${errors.length} errore/i bloccanti`} />
-            </div>
-          </Card>
-        )}
+        <ProposedPlanPanel
+          catalog={catalog}
+          scenario={scenario}
+          validation={validation}
+          exams={exams}
+          readOnly={isHistorical}
+          revisionMode={revisionMode}
+          editableSemester={editableSemester}
+          onRemove={removeEntry}
+          onSetPosition={setPosition}
+        />
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <Metric label="CFU effettivi" value={`${validation.summary.totalEffectiveCfu} / 180`} />
-          <Metric label="CFU tassa anno" value={String(validation.summary.annualFeeCfu)} />
-          <Metric label="Recuperi scalati" value={String(validation.summary.recoveredCfu)} />
-          <Metric label="Soprannumero" value={`${validation.summary.supernumeraryCfu} / 32`} />
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Reinserimenti obbligatori</CardTitle>
-            <div className="flex items-center gap-2">
-              <Badge variant={missingReinsertions.length ? "danger" : "success"}>
-                {missingReinsertions.length ? `${missingReinsertions.length} mancanti` : "Completi"}
-              </Badge>
-              {missingReinsertions.length === 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowReinsertions((value) => !value)}
-                  aria-expanded={reinsertionsExpanded}
-                >
-                  {reinsertionsExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-                  {reinsertionsExpanded ? "Nascondi" : "Dettagli"}
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          {reinsertionsExpanded && <div className="space-y-2">
-            {requiredReinsertions.length === 0 && (
-              <p className="text-sm text-muted">Nessun piano marcato come compilato su PoliMi richiede reinserimenti.</p>
-            )}
-            {requiredReinsertions.map((required) => {
-              const course = getCourse(required.courseCode);
-              const existingEntry = scenario.entries.find((entry) => entry.courseCode === required.courseCode);
-              const present = existingEntry ? isValidReinsertionEntry(existingEntry, required.courseCode) : false;
-              const needsOriginFix = Boolean(existingEntry && !present);
-              return (
-                <div key={required.courseCode} className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface/40 px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-primary">{course?.name ?? required.courseCode}</p>
-                    <p className="text-xs text-muted">Dal piano {required.sourceAcademicYear}</p>
-                  </div>
-                  <Badge variant={present ? "success" : needsOriginFix ? "warning" : "danger"}>
-                    {present ? "Reinserito" : needsOriginFix ? "Da classificare" : "Manca"}
-                  </Badge>
-                  {!present && !isHistorical && (
-                    <Button size="sm" onClick={() => addEntry(required.courseCode, "recovery_reinserted")}>
-                      <RotateCcw className="size-4" />
-                      {needsOriginFix ? "Marca recupero" : "Inserisci"}
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </div>}
-        </Card>
-
-        <div className="flex gap-2 flex-wrap">
-          {([1, 2, 3] as const).map((year) => {
-            const cfu = sumCFU(scenario.entries
-              .filter((entry) => entry.courseYear === year && entry.position === "effective")
-              .map((entry) => getCourse(entry.courseCode))
-              .filter(isVisibleCourse));
-            return (
-              <button
-                key={year}
-                onClick={() => setActiveYear(year)}
-                className={cn(
-                  "flex items-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold transition",
-                  activeYear === year
-                    ? "border-accent bg-accent/10 text-accent"
-                    : "border-border text-secondary hover:border-border-strong hover:text-primary"
-                )}
-              >
-                Anno {year}
-                <span className={cn("font-mono text-xs", activeYear === year ? "text-accent/70" : "text-muted")}>{cfu} CFU</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {[1, 2, "A" as const].map((sem) => {
-          const semEntries = yearEntries.filter((entry) => entry.semester === sem);
-          const cfu = sumCFU(semEntries.map((entry) => getCourse(entry.courseCode)).filter(isVisibleCourse));
-          return (
-            <Card key={String(sem)}>
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <CardTitle>{SEMESTER_LABEL[sem]}</CardTitle>
-                  {sem === 1 && (
-                    <InfoButton title="Categorie attività">
-                      {Object.entries(ACTIVITY_CATEGORY_DETAILS).map(([k, v]) => (
-                        <p key={k}><strong>{k}</strong>: {v.label} — {v.description}</p>
-                      ))}
-                    </InfoButton>
-                  )}
-                </div>
-                <span className="text-xs text-muted">{cfu} CFU</span>
-              </CardHeader>
-              <EntryList entries={semEntries} scenario={scenario} readOnly={isHistorical} onRemove={removeEntry} onSetPosition={setPosition} />
-              {!isHistorical && (
-                <Button variant="ghost" size="sm" onClick={() => setModalOpen(true)} className="mt-3 w-full border border-dashed border-border">
-                  <Plus className="size-4" />
-                  Aggiungi corso
-                </Button>
-              )}
-            </Card>
-          );
-        })}
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Soprannumero</CardTitle>
-            <span className="text-xs text-muted">{validation.summary.supernumeraryCfu} CFU</span>
-          </CardHeader>
-          <EntryList entries={supernumeraryEntries} scenario={scenario} readOnly={isHistorical} onRemove={removeEntry} onSetPosition={setPosition} />
-          {supernumeraryEntries.length === 0 && <p className="text-sm text-muted">Nessun corso in soprannumero.</p>}
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Riepilogo compilabilità</CardTitle>
-            <div className="flex items-center gap-2">
-              <Badge variant={errors.length ? "danger" : warnings.length ? "warning" : "success"}>
-                {errors.length ? `${errors.length} errori` : warnings.length ? `${warnings.length} avvisi` : "Compilabile"}
-              </Badge>
-              {errors.length === 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowSummary((value) => !value)}
-                  aria-expanded={summaryExpanded}
-                >
-                  {summaryExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-                  {summaryExpanded ? "Nascondi" : "Dettagli"}
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          {summaryExpanded && <div className="grid gap-2 text-sm text-secondary md:grid-cols-3">
-            <p>Approvazione: <span className="text-primary">{validation.summary.approvalStatus === "auto_approved_after_deadline" ? "automatica" : "commissione"}</span></p>
-            <p>Modalità: <span className="text-primary">{MODE_LABEL[scenario.cycle.validationMode]}</span></p>
-            <p>Stato: <span className="text-primary">{STATUS_LABEL[scenario.cycle.status]}</span></p>
-          </div>}
-        </Card>
-
-        <div className="flex flex-wrap items-center gap-3">
-          {!isHistorical && (
-            <>
-              <Button variant="secondary" onClick={save} disabled={isPending}>
-                <Save className="size-4" />
-                Salva bozza
-              </Button>
-              <div className="relative">
-                <Button variant="ghost" onClick={() => setShowMoreActions(v => !v)}>
-                  <ChevronDown className="size-4" />
-                  Altre azioni
-                </Button>
-                <AnimatePresence>
-                  {showMoreActions && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      transition={{ duration: 0.15 }}
-                      className="absolute bottom-full left-0 z-10 mb-2 w-64 rounded-xl border border-border bg-surface-elevated p-2 shadow-elevated"
-                    >
-                      <button type="button" onClick={() => { verify(); setShowMoreActions(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-secondary hover:bg-surface-hover hover:text-primary transition">
-                        <ClipboardCheck className="size-4" /> Controlla regole PoliMi
-                      </button>
-                      <button type="button" onClick={() => { markReady(); setShowMoreActions(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-secondary hover:bg-surface-hover hover:text-primary transition">
-                        <CheckCircle2 className="size-4" /> Pronto per Servizi Online
-                      </button>
-                      <button type="button" onClick={() => { markCompiled(); setShowMoreActions(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-secondary hover:bg-surface-hover hover:text-primary transition">
-                        <GraduationCap className="size-4" /> Ho copiato su PoliMi
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </>
-          )}
-          {saveMsg && <span className={cn("text-sm", saveMsg.ok ? "text-success" : "text-danger")}>{saveMsg.text}</span>}
-        </div>
-
-        <div className="lg:hidden">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowValidation((value) => !value)}
-            aria-expanded={showValidation}
-          >
-            {showValidation ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-            Validazione Piano
-          </Button>
-          <AnimatePresence initial={false}>
-            {showValidation && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-3 overflow-hidden">
-                <ValidationPanel issues={validation.issues} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
-
-      <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-border bg-background-soft p-4 lg:block">
         <button
           type="button"
-          onClick={() => setShowValidation((value) => !value)}
-          aria-expanded={showValidation}
-          className="mb-4 flex w-full items-center justify-between gap-3 text-left text-xs font-semibold uppercase tracking-wide text-muted transition hover:text-primary"
-        >
-          Validazione Piano
-          {showValidation ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-        </button>
-        <AnimatePresence initial={false}>
-          {showValidation && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-              <ValidationPanel issues={validation.issues} />
-            </motion.div>
+          onClick={() => setDetailsOpen(true)}
+          className={cn(
+            "flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left sm:hidden",
+            buckets.errors.length > 0
+              ? "border-danger/30 bg-danger/5"
+              : buckets.warnings.length > 0
+                ? "border-warning/30 bg-warning/5"
+                : "border-success/30 bg-success/5"
           )}
-        </AnimatePresence>
-      </aside>
+        >
+          <span>
+            <span className="block text-sm font-semibold text-primary">
+              {buckets.errors.length > 0
+                ? `${buckets.errors.length} problemi da risolvere`
+                : buckets.warnings.length > 0
+                  ? `${buckets.warnings.length} avvisi da controllare`
+                  : "Piano in regola per quest'anno"}
+            </span>
+            <span className="mt-0.5 block text-xs text-muted">Apri la verifica completa</span>
+          </span>
+          <CheckCircle2 className={cn("size-5 shrink-0", buckets.errors.length > 0 ? "text-danger" : buckets.warnings.length > 0 ? "text-warning" : "text-success")} />
+        </button>
 
-      <AddCourseModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        year={activeYear}
-        track={scenario.cycle.track}
-        piano={piano}
-        onAdd={addEntry}
-      />
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-card border border-border bg-surface px-4 py-3 shadow-card">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
-      <p className="mt-1 font-mono text-xl font-semibold text-primary">{value}</p>
-    </div>
-  );
-}
-
-function FlowStep({ label, done, text }: { label: string; done: boolean; text: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-surface/50 px-4 py-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
-        <Badge variant={done ? "success" : "warning"} className="py-0.5">{done ? "OK" : "Da fare"}</Badge>
-      </div>
-      <p className="text-sm text-secondary">{text}</p>
-    </div>
-  );
-}
-
-function EntryList({
-  entries,
-  scenario,
-  readOnly,
-  onRemove,
-  onSetPosition,
-}: {
-  entries: PlanEntry[];
-  scenario: PlanScenario;
-  readOnly: boolean;
-  onRemove: (code: string) => void;
-  onSetPosition: (code: string, position: EntryPosition) => void;
-}) {
-  if (entries.length === 0) {
-    return <p className="py-3 text-center text-xs text-muted">Nessun corso aggiunto.</p>;
-  }
-
-  return (
-    <div className="space-y-2">
-      {entries.map((entry) => {
-        const course = getCourse(entry.courseCode);
-        if (!course || course.isLinkedExam) return null;
-        const linkedInPlan = course.linkedExams?.filter((le) => scenario.entries.some((planEntry) => planEntry.courseCode === le.code)) ?? [];
-        const activityCategory = activityCategoryForCourse(course);
-        return (
-          <div key={entry.courseCode} className="flex items-center gap-3 rounded-xl border border-border bg-surface/40 px-4 py-2.5">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-primary">{course.name}</p>
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-muted">{course.cfu} CFU</span>
-                {!(course.type as string[]).includes(activityCategory) && (
-                  <span className={cn("rounded px-1 py-0.5 text-[10px] font-bold", TYPE_COLORS[activityCategory] ?? "")}>{activityCategory}</span>
-                )}
-                {course.type.map((t) => (
-                  <span key={t} className={cn("rounded px-1 py-0.5 text-[10px] font-bold", TYPE_COLORS[t] ?? "")}>{t}</span>
-                ))}
-                <Badge variant="neutral" className="py-0 text-[10px]">{ORIGIN_LABEL[entry.origin]}</Badge>
-                {!entry.feeCounted && <Badge variant="success" className="py-0 text-[10px]">CFU scalati</Badge>}
-                {linkedInPlan.map((le) => (
-                  <span key={le.code} className="text-[10px] text-muted">+{le.name} ({le.cfu} CFU)</span>
-                ))}
-              </div>
-            </div>
-            {!readOnly && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onSetPosition(entry.courseCode, entry.position === "effective" ? "supernumerary" : "effective")}
-              >
-                {entry.position === "effective" ? "Soprannumero" : "Effettivo"}
+        {!isHistorical && (
+          <div className="rounded-panel border border-border bg-surface/40 p-4">
+            <p className="text-sm font-semibold text-primary">Compilazione del piano</p>
+            <ol className="mt-3 grid gap-2 text-xs sm:grid-cols-3" aria-label="Stato della compilazione">
+              <WorkflowStep number="1" label="Salva la proposta" active={scenario.cycle.status === "draft"} complete={scenario.cycle.id !== null} />
+              <WorkflowStep number="2" label="Segna come pronta" active={scenario.cycle.status === "ready"} complete={scenario.cycle.status === "ready" || scenario.cycle.status === "polimi_compiled"} />
+              <WorkflowStep number="3" label="Conferma la copia su PoliMi" active={scenario.cycle.status === "polimi_compiled"} complete={scenario.cycle.status === "polimi_compiled"} />
+            </ol>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <Button variant="primary" onClick={save} disabled={isPending} className="w-full sm:w-auto">
+                <Save className="size-4" />
+                {scenario.cycle.id === null ? "Salva piano" : "Salva bozza"}
               </Button>
+              <Button variant="secondary" onClick={markReady} disabled={isPending || buckets.errors.length > 0} className="w-full sm:w-auto">
+                <CheckCircle2 className="size-4" />
+                Pronto da compilare
+              </Button>
+              <Button variant="secondary" onClick={markCompiled} disabled={isPending || scenario.cycle.status !== "ready"} className="w-full sm:w-auto">
+                <GraduationCap className="size-4" />
+                Conferma copia su PoliMi
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {feedback && (
+          <div
+            role="status"
+            className={cn(
+              "rounded-xl border px-4 py-3 text-sm",
+              feedback.ok ? "border-success/30 bg-success/5 text-success" : "border-danger/30 bg-danger/5 text-danger"
             )}
-            {!readOnly && !course.isCompulsory && (
-              <button
-                onClick={() => onRemove(entry.courseCode)}
-                className="shrink-0 rounded-full p-1.5 text-muted transition hover:bg-danger/10 hover:text-danger"
-                title="Rimuovi corso"
-              >
-                <Trash2 className="size-4" />
-              </button>
+          >
+            <p className="font-medium">{feedback.text}</p>
+            {feedback.details && feedback.details.length > 0 && (
+              <ul className="mt-1 space-y-0.5 text-xs text-secondary">
+                {feedback.details.map((detail) => <li key={detail}>· {detail}</li>)}
+              </ul>
             )}
           </div>
-        );
-      })}
+        )}
+
+        <CollapsibleSection
+          title="Altre funzioni"
+          description="Carriera, guida, simulatore, anni successivi e storico."
+          badge={<Layers3 className="size-4 text-muted" />}
+          open={toolsOpen}
+          onToggle={() => setToolsOpen((value) => !value)}
+          tone="muted"
+        >
+          <div className="space-y-3">
+            <Button variant="secondary" onClick={() => setGuideOpen((value) => !value)} aria-expanded={guideOpen}>
+              <BookOpen className="size-4" />
+              {guideOpen ? "Chiudi guida" : "Apri guida"}
+            </Button>
+            {guideOpen && <LazyPlanGuide onClose={() => setGuideOpen(false)} />}
+
+            <CollapsibleSection
+              title="Carriera"
+              description="Cosa risulta davvero in libretto. Solo gli esami verbalizzati chiudono un'attività."
+              badge={<Badge variant="success" className="py-0 text-[10px]">{validation.summary.registeredCareerCfu} CFU</Badge>}
+              open={careerOpen}
+              onToggle={() => setCareerOpen((value) => !value)}
+            >
+              {careerOpen && <LazyCareerPanel exams={exams} academicYear={scenario.cycle.academicYear} track={scenario.cycle.track} onChanged={setExams} />}
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Anteprima anni successivi"
+              description="Regole che diventeranno esigibili più avanti."
+              badge={futureCount > 0 ? <Badge variant="neutral" className="py-0 text-[10px]">{futureCount}</Badge> : undefined}
+              open={futureOpen}
+              onToggle={() => setFutureOpen((value) => !value)}
+              tone="muted"
+            >
+              {futureOpen && <LazyFutureYearsPanel catalog={catalog} validation={validation} />}
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Simulatore di scenari"
+              description="Prova ipotesi sugli esami senza toccare carriera e piano."
+              badge={<FlaskConical className="size-4 text-accent" />}
+              open={simulatorOpen}
+              onToggle={() => setSimulatorOpen((value) => !value)}
+              tone="muted"
+            >
+              {simulatorOpen && <LazySimulatorPanel scenario={scenario} context={context} onConfirm={isHistorical ? undefined : applySimulation} />}
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Scenari salvati e storico"
+              description="Consultazione, archiviazione e creazione manuale dei piani."
+              badge={<span className="flex items-center gap-1 text-[10px] text-muted"><History className="size-3.5" />{cycles.length}</span>}
+              open={historyOpen}
+              onToggle={() => setHistoryOpen((value) => !value)}
+              tone="muted"
+            >
+              {historyOpen && (
+                <LazyScenarioHistoryPanel
+                  cycles={cycles}
+                  currentCycleId={scenario.cycle.id}
+                  activeCycleId={currentActiveCycleId}
+                  currentAcademicYear={scenario.cycle.academicYear}
+                  currentStudentYear={scenario.cycle.studentYear}
+                  currentTrack={scenario.cycle.track}
+                  validationMode={scenario.cycle.validationMode}
+                  isHistorical={isHistorical}
+                  isCompiled={scenario.cycle.status === "polimi_compiled" && !scenario.cycle.archivedAt}
+                  pending={isPending}
+                  onSelect={goToScenario}
+                  onSetActive={() => cycleAction(setActivePlanCycleAction, "Scenario impostato come attivo.", { activates: true })}
+                  onArchive={() => cycleAction(archivePlanCycleAction, "Scenario archiviato.", { redirect: "/piano", clearsActive: true })}
+                  onRestore={() => cycleAction(restorePlanCycleAction, "Scenario ripristinato.")}
+                  onCreate={createAnnual}
+                  onDuplicateNextYear={duplicateNextYear}
+                  onCreateRevision={createRevision}
+                />
+              )}
+            </CollapsibleSection>
+          </div>
+        </CollapsibleSection>
+
+        {detailsOpen && (
+          <LazyAllRulesPanel catalog={catalog} validation={validation} onClose={() => setDetailsOpen(false)} />
+        )}
+
+        <div className="xl:hidden">
+          <PlanIssuesAside validation={validation} onOpenDetails={() => setDetailsOpen(true)} />
+        </div>
+      </div>
+
+      <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-border bg-background-soft p-4 xl:block">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">
+          Verifica del piano {scenario.cycle.academicYear}
+        </p>
+        <PlanIssuesAside validation={validation} onOpenDetails={() => setDetailsOpen(true)} />
+        <p className="mt-4 rounded-xl border border-border bg-surface/40 p-3 text-[11px] leading-relaxed text-muted">
+          {DISCLAIMER}
+        </p>
+      </aside>
+
+      {catalogOpen && (
+        <LazyAddCourseModal
+          onClose={() => setCatalogOpen(false)}
+          academicYear={scenario.cycle.academicYear}
+          track={scenario.cycle.track}
+          studentYear={scenario.cycle.studentYear}
+          alreadyInPlan={planCodes}
+          alreadyPassed={registeredCodes}
+          reinsertionCodes={reinsertionCodes}
+          structuralChoices={validation.structuralChoices}
+          restrictToSemester={revisionMode ? editableSemester : null}
+          onAdd={addCourse}
+        />
+      )}
     </div>
   );
 }
 
-function isVisibleCourse(course: ReturnType<typeof getCourse>): course is NonNullable<ReturnType<typeof getCourse>> {
-  if (!course) return false;
-  return !course.isLinkedExam;
+function WorkflowStep({ number, label, active, complete }: { number: string; label: string; active: boolean; complete: boolean }) {
+  return (
+    <li className={cn(
+      "flex items-center gap-2 rounded-xl border px-3 py-2",
+      active ? "border-accent/40 bg-accent/5 text-primary" : complete ? "border-success/25 bg-success/5 text-secondary" : "border-border bg-background-soft/50 text-muted"
+    )}>
+      <span className={cn(
+        "grid size-6 shrink-0 place-items-center rounded-md font-semibold",
+        active ? "bg-accent text-background" : complete ? "bg-success/15 text-success" : "bg-surface-muted text-muted"
+      )}>
+        {complete && !active ? <CheckCircle2 className="size-3.5" aria-hidden="true" /> : number}
+      </span>
+      <span>{label}</span>
+    </li>
+  );
 }

@@ -1,19 +1,12 @@
 import SettingsPanel from "@/features/settings/SettingsPanel";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { PageShell } from "@/components/ui/PageShell";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export default function SettingsPage() {
   return (
     <PageShell>
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Impostazioni</CardTitle>
-            <CardDescription>Gestione locale dei dati demo e del database</CardDescription>
-          </div>
-        </CardHeader>
-        <SettingsPanel />
-      </Card>
+      <PageHeader title="Impostazioni" subtitle="Gestisci l'installazione e i dati conservati in questa istanza." />
+      <SettingsPanel />
     </PageShell>
   );
 }
