@@ -12,10 +12,10 @@
 //   3. "Salva" → saveScheduleAction(rows) → server regenerates occurrences
 //      → revalidatePath("/", "layout") → all pages re-render with fresh data
 
-import { useState, useTransition } from "react";
-import { Plus, Save, Trash2 } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { ChevronDown, Plus, Save, Trash2 } from "lucide-react";
 import { saveScheduleAction } from "@/app/actions";
-import { addCalendarDays, today, WEEKDAY_LABELS, WORKWEEK } from "@/lib/dates";
+import { addCalendarDays, formatItalianDateRange, today, WEEKDAY_LABELS, WORKWEEK } from "@/lib/dates";
 import { LESSON_MODE_LABELS, type LessonMode, type ScheduleRow } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -47,9 +47,10 @@ function emptyRow(): EditorRow {
 interface ScheduleEditorProps {
   initialRows: ScheduleRow[];
   onSaveSuccess?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
-export default function ScheduleEditor({ initialRows, onSaveSuccess }: ScheduleEditorProps) {
+export default function ScheduleEditor({ initialRows, onSaveSuccess, onDirtyChange }: ScheduleEditorProps) {
   const [rows, setRows] = useState<EditorRow[]>(
     initialRows.length > 0
       ? initialRows.map(rowFromSchedule)
@@ -57,23 +58,47 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess }: ScheduleE
   );
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [activeKey, setActiveKey] = useState<number | null>(() => rows[0]?._key ?? null);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    function warnBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+    }
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [dirty]);
+
+  const markDirty = () => setDirty(true);
 
   // Update a single field in a single row
   function updateRow(key: number, field: keyof EditorRow, value: string | number) {
+    markDirty();
     setRows((prev) =>
       prev.map((r) => (r._key === key ? { ...r, [field]: value } : r))
     );
   }
 
   function addRow() {
-    setRows((prev) => [...prev, emptyRow()]);
+    const row = emptyRow();
+    setRows((prev) => [...prev, row]);
+    setActiveKey(row._key);
+    markDirty();
   }
 
   function removeRow(key: number) {
+    markDirty();
     setRows((prev) => {
       const next = prev.filter((r) => r._key !== key);
-      return next.length > 0 ? next : [emptyRow()];
+      const remaining = next.length > 0 ? next : [emptyRow()];
+      setActiveKey((current) => current === key ? remaining[0]._key : current);
+      return remaining;
     });
   }
 
@@ -93,6 +118,7 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess }: ScheduleE
       const result = await saveScheduleAction(payload);
       if (result.ok) {
         setSuccess(true);
+        setDirty(false);
         onSaveSuccess?.();
         setTimeout(() => setSuccess(false), 2000);
       } else {
@@ -112,13 +138,14 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess }: ScheduleE
             disabled={isPending}
           >
             <Plus className="size-4" aria-hidden="true" />
-            Riga
+            Aggiungi lezione
           </Button>
           <Button
             type="button"
             variant="primary"
             onClick={handleSave}
-            disabled={isPending}
+            disabled={isPending || !dirty}
+            className="hidden md:inline-flex"
           >
             <Save className="size-4" aria-hidden="true" />
             {isPending ? "Salvataggio..." : "Salva calendario"}
@@ -252,23 +279,30 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess }: ScheduleE
         {rows.map((row, index) => (
           <div
             key={row._key}
-            className="min-w-0 rounded-card border border-border bg-surface-muted/70 p-4 shadow-inset"
+            className="min-w-0 overflow-hidden rounded-card border border-border bg-surface-muted/70 shadow-inset"
           >
-            <div className="mb-4 flex items-start justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setActiveKey((current) => current === row._key ? null : row._key)}
+              aria-expanded={activeKey === row._key}
+              className="flex w-full items-start justify-between gap-3 p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50"
+            >
               <div className="min-w-0">
-                <p className="text-xs font-medium uppercase text-muted">
-                  Riga {index + 1}
-                </p>
-                <p className="mt-1 truncate text-sm font-semibold text-primary">
+                <p className="text-xs font-medium text-muted">{WEEKDAY_LABELS[row.weekday]} · lezione {index + 1}</p>
+                <p className="mt-1 line-clamp-2 text-sm font-semibold text-primary">
                   {row.subject || "Nuova materia"}
                 </p>
+                <p className="mt-1 text-xs text-muted">{formatItalianDateRange(row.start_date, row.end_date)}</p>
               </div>
-              <Badge variant={row.mode === "presenza" ? "active" : "warning"}>
-                {LESSON_MODE_LABELS[row.mode]}
-              </Badge>
-            </div>
+              <span className="flex shrink-0 items-center gap-2">
+                <Badge variant={row.mode === "presenza" ? "active" : "warning"} className="max-w-28 text-center">
+                  {row.mode === "asincrona" ? "Asincrona" : "In presenza"}
+                </Badge>
+                <ChevronDown className={`size-4 text-muted transition ${activeKey === row._key ? "rotate-180" : ""}`} aria-hidden="true" />
+              </span>
+            </button>
 
-            <div className="grid min-w-0 gap-3">
+            {activeKey === row._key && <div className="animate-panel-open grid min-w-0 gap-3 border-t border-border p-4">
               <label className="space-y-2">
                 <span className={fieldLabelClass}>Giorno</span>
                 <select
@@ -360,9 +394,22 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess }: ScheduleE
                 <Trash2 className="size-4" aria-hidden="true" />
                 Rimuovi riga
               </Button>
-            </div>
+            </div>}
           </div>
         ))}
+      </div>
+
+      <div className="sticky z-20 -mx-4 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-xl md:hidden" style={{ bottom: "calc(5.5rem + env(safe-area-inset-bottom))" }}>
+        <Button
+          type="button"
+          variant="primary"
+          onClick={handleSave}
+          disabled={isPending || !dirty}
+          className="w-full"
+        >
+          <Save className="size-4" aria-hidden="true" />
+          {isPending ? "Salvataggio..." : dirty ? "Salva calendario" : "Calendario salvato"}
+        </Button>
       </div>
     </div>
   );

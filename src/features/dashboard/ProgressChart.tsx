@@ -35,8 +35,9 @@ export default function ProgressChart({ done, pending }: ProgressChartProps) {
 
   if (total === 0) {
     return (
-      <div className="flex h-56 items-center justify-center rounded-card border border-dashed border-border bg-surface/60 text-sm text-muted">
-        Nessun dato disponibile
+      <div className="flex h-56 flex-col items-center justify-center rounded-card border border-dashed border-border bg-surface/60 px-5 text-center">
+        <p className="text-sm font-semibold text-primary">Nessun dato sulle lezioni</p>
+        <p className="mt-1 text-xs text-muted">Il grafico apparirà dopo aver configurato il calendario.</p>
       </div>
     );
   }
@@ -82,15 +83,33 @@ export default function ProgressChart({ done, pending }: ProgressChartProps) {
   };
 
   return (
-    <div className="relative h-56">
-      <Doughnut data={data} options={options} />
-      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-        <span className="text-xs font-medium uppercase text-muted">
-          Completate
-        </span>
-        <span className="text-3xl font-semibold tabular-nums text-primary">
-          {progress}%
-        </span>
+    <div>
+      <p className="sr-only" id="lesson-progress-summary">
+        {done} lezioni completate, {pending} lezioni da seguire. Avanzamento {progress}%.
+      </p>
+      <div className="relative h-52" aria-describedby="lesson-progress-summary">
+        <Doughnut
+          data={data}
+          options={options}
+          role="img"
+          aria-label={`${done} lezioni completate, ${pending} lezioni da seguire`}
+        />
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center" aria-hidden="true">
+          <span className="text-xs font-medium uppercase text-muted">Completate</span>
+          <span className="text-3xl font-semibold tabular-nums text-primary">{progress}%</span>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-sm" aria-hidden="true">
+        <div className="flex items-center gap-2 rounded-lg bg-accent/5 px-3 py-2 text-secondary">
+          <span className="size-2.5 rounded-sm bg-accent" />
+          <span>Seguite</span>
+          <span className="ml-auto font-semibold tabular-nums text-primary">{done}</span>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg bg-danger/5 px-3 py-2 text-secondary">
+          <span className="size-2.5 rounded-sm bg-danger" />
+          <span>Da seguire</span>
+          <span className="ml-auto font-semibold tabular-nums text-primary">{pending}</span>
+        </div>
       </div>
     </div>
   );

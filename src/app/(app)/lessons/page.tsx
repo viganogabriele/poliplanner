@@ -3,6 +3,7 @@ import TodoList from "@/features/lessons/TodoList";
 import StatTile from "@/components/ui/StatTile";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { PageShell } from "@/components/ui/PageShell";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,10 @@ export default function LessonsPage() {
 
   return (
     <PageShell>
-
+      <PageHeader
+        title="Lezioni"
+        subtitle="Recupera le attività arretrate e aggiorna la modalità di ogni lezione."
+      />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatTile label="Seguite" value={dashboard.done_count} accent="green" />
         <StatTile label="Da seguire" value={dashboard.pending_count} accent="red" />
@@ -29,7 +33,7 @@ export default function LessonsPage() {
             <CardDescription>Attività arretrate e previste per oggi</CardDescription>
           </div>
         </CardHeader>
-        <TodoList items={dashboard.todo_items} />
+        <TodoList items={dashboard.todo_items} configured={dashboard.total_count > 0} />
       </Card>
     </PageShell>
   );

@@ -31,8 +31,8 @@
   --color-panel: #0a0f14;
   --color-panel2: #121c22;
 
-  --radius-card: 20px;
-  --radius-panel: 24px;
+  --radius-card: 16px;
+  --radius-panel: 20px;
 
   --shadow-card: 0 12px 40px rgba(0, 0, 0, 0.32);
   --shadow-elevated: 0 18px 60px rgba(0, 0, 0, 0.48);
@@ -67,6 +67,7 @@ body {
   min-height: 100vh;
   color: #fcfcfc;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  overflow-wrap: anywhere;
 }
 
 * {
@@ -82,6 +83,17 @@ textarea {
 
 input[type="date"] {
   color-scheme: dark;
+}
+
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid rgba(86, 215, 253, 0.75);
+  outline-offset: 2px;
+}
+
+@media (display-mode: standalone) {
+  .pwa-install-hint {
+    display: none;
+  }
 }
 
 ::selection {

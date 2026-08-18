@@ -6,40 +6,66 @@
 // Server Components CAN render Client Components; they just can't use
 // hooks themselves.
 
-import LiveClock from "@/components/ui/LiveClock";
+import Link from "next/link";
+import { ArrowRight, CalendarCheck2 } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
-import StatTile from "@/components/ui/StatTile";
+import { buttonClass } from "@/components/ui/Button";
+import type { TodoItem } from "@/lib/types";
 
 interface TodayPanelProps {
-  today: string;
-  today_weekday: string;
   today_count: number;
+  todoItems: TodoItem[];
+  hasCalendar: boolean;
 }
 
 export default function TodayPanel({
-  today,
-  today_weekday,
   today_count,
+  todoItems,
+  hasCalendar,
 }: TodayPanelProps) {
+  const next = todoItems[0];
   return (
     <Card>
       <CardHeader>
         <div>
           <CardTitle>Oggi</CardTitle>
-          <CardDescription>Riepilogo locale aggiornato</CardDescription>
+          <CardDescription>Le attività che richiedono attenzione adesso</CardDescription>
         </div>
       </CardHeader>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-        <StatTile label="Data locale" value={today} />
-        <div className="flex min-h-28 flex-col justify-between gap-3 rounded-card border border-border bg-surface-muted/70 px-4 py-3 shadow-inset">
-          <span className="text-xs font-medium uppercase text-muted">
-            Ora locale
-          </span>
-          <LiveClock />
+      {!hasCalendar ? (
+        <div className="rounded-xl border border-dashed border-border bg-surface-muted/40 p-5 text-center">
+          <p className="text-sm font-semibold text-primary">Calendario non configurato</p>
+          <p className="mt-1 text-xs text-muted">Aggiungi le ricorrenze per vedere qui la prossima attività.</p>
+          <Link href="/calendar" className={buttonClass({ variant: "primary", size: "sm", className: "mt-4 w-full" })}>
+            Configura calendario
+          </Link>
         </div>
-        <StatTile label="Lezioni previste oggi" value={today_count} accent="sky" />
-        <StatTile label="Giorno settimana" value={today_weekday} />
-      </div>
+      ) : <div className="space-y-3">
+        <div className="rounded-xl border border-border bg-surface-muted/70 p-4 shadow-inset">
+          <div className="flex items-center gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent">
+              <CalendarCheck2 className="size-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-2xl font-semibold tabular-nums text-primary">{today_count}</p>
+              <p className="text-xs text-muted">{today_count === 1 ? "lezione prevista oggi" : "lezioni previste oggi"}</p>
+            </div>
+          </div>
+        </div>
+        {next ? (
+          <div className="rounded-xl border border-border bg-background-soft/70 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Prossima da recuperare</p>
+            <p className="mt-1 text-sm font-semibold text-primary">{next.subject}</p>
+            <Link href="/lessons" className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-accent hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+              Apri le lezioni <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-success/25 bg-success/5 p-4 text-sm text-secondary">
+            Nessuna lezione arretrata o prevista per oggi.
+          </div>
+        )}
+      </div>}
     </Card>
   );
 }

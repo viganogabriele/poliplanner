@@ -73,3 +73,27 @@ export function addCalendarDays(date: string, days: number): string {
   parsed.setUTCDate(parsed.getUTCDate() + days);
   return toISODate(parsed);
 }
+
+type ItalianDateStyle = "short" | "long" | "weekday";
+
+const ITALIAN_DATE_FORMATTERS: Record<ItalianDateStyle, Intl.DateTimeFormat> = {
+  short: new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }),
+  long: new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }),
+  weekday: new Intl.DateTimeFormat("it-IT", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }),
+};
+
+/** Formats a civil ISO date without shifting it through the server or browser timezone. */
+export function formatItalianDate(value: string, style: ItalianDateStyle = "short"): string {
+  if (!isISODate(value)) return value;
+  return ITALIAN_DATE_FORMATTERS[style].format(parseISODate(value));
+}
+
+export function formatItalianDateRange(start: string, end: string): string {
+  if (!isISODate(start) || !isISODate(end)) return `${start} - ${end}`;
+  return new Intl.DateTimeFormat("it-IT", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).formatRange(parseISODate(start), parseISODate(end));
+}

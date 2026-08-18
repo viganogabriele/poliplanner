@@ -30,7 +30,7 @@ export default function StatTile({ label, value, accent }: StatTileProps) {
       <span className="text-xs font-medium uppercase text-muted">
         {label}
       </span>
-      <span className={`break-words text-2xl font-semibold leading-tight tabular-nums ${valueClass}`}>
+      <span className={`whitespace-nowrap text-2xl font-semibold leading-tight tabular-nums ${valueClass}`}>
         {value}
       </span>
     </div>

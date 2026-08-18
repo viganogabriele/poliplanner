@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, Lock, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { CalendarClock, Lock, RotateCcw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -11,6 +11,7 @@ import type { CareerExamsMap } from "@/lib/polimi/career";
 import type { PlanEntry, PlanScenario } from "@/lib/polimi/planModel";
 import type { PlanValidationResult } from "@/lib/polimi/validation";
 import { cn } from "@/lib/ui";
+import { IconButton } from "@/components/ui/IconButton";
 
 /**
  * "Piano proposto": le righe che finiranno nei Servizi Online, divise per semestre.
@@ -40,7 +41,6 @@ type Props = {
   editableSemester: 1 | 2;
   onRemove: (code: string) => void;
   onSetPosition: (code: string, position: EntryPosition) => void;
-  onOpenCatalog: () => void;
 };
 
 export default function ProposedPlanPanel({
@@ -53,7 +53,6 @@ export default function ProposedPlanPanel({
   editableSemester,
   onRemove,
   onSetPosition,
-  onOpenCatalog,
 }: Props) {
   const { sections, summary } = validation;
   const track = scenario.cycle.track;
@@ -126,12 +125,17 @@ export default function ProposedPlanPanel({
           );
         })}
 
-        {!readOnly && (
-          <Button variant="ghost" size="sm" onClick={onOpenCatalog} className="mt-1 w-full border border-dashed border-border">
-            <Plus className="size-4" />
-            {revisionMode ? `Aggiungi un insegnamento del ${editableSemester}° semestre` : "Aggiungi un insegnamento"}
-          </Button>
-        )}
+        <div className="mt-4 border-t border-border pt-3">
+          <p className="text-xs font-semibold text-secondary">Categorie</p>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-2">
+            {Object.entries(CATEGORY_LABELS).map(([code, label]) => (
+              <span key={code} className="inline-flex items-center gap-1.5 text-[11px] text-muted">
+                <span className={cn("rounded px-1.5 py-0.5 font-bold", CATEGORY_COLORS[code] ?? "bg-surface text-muted")}>{code}</span>
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
       </Card>
 
       {sections.supernumerary.length > 0 && (
@@ -202,7 +206,7 @@ function EntryRows({
             )}
           >
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-primary">
+              <p className="line-clamp-2 text-sm font-medium text-primary" title={course?.name ?? entry.externalName ?? entry.courseCode}>
                 {course?.name ?? entry.externalName ?? entry.courseCode}
               </p>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
@@ -240,16 +244,16 @@ function EntryRows({
                   size="sm"
                   onClick={() => onSetPosition(entry.courseCode, entry.position === "effective" ? "supernumerary" : "effective")}
                 >
-                  {entry.position === "effective" ? "→ Soprannumero" : "→ Effettivo"}
+                  {entry.position === "effective" ? "Sposta in soprannumero" : "Conta nei 180 CFU"}
                 </Button>
-                <button
-                  type="button"
+                <IconButton
                   onClick={() => onRemove(entry.courseCode)}
-                  className="shrink-0 rounded-full p-1.5 text-muted transition hover:bg-danger/10 hover:text-danger"
-                  aria-label={`Rimuovi ${course?.name ?? entry.courseCode}`}
+                  label={`Rimuovi ${course?.name ?? entry.courseCode}`}
+                  size="md"
+                  className="border-transparent bg-transparent hover:bg-danger/10 hover:text-danger"
                 >
                   <Trash2 className="size-4" />
-                </button>
+                </IconButton>
               </>
             )}
             {!editable && <Lock className="size-3.5 shrink-0 text-muted" aria-label="Non modificabile" />}

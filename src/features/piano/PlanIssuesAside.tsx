@@ -1,6 +1,5 @@
 "use client";
 
-import { CheckCircle } from "lucide-react";
 import type { PlanValidationResult, ValidationIssue } from "@/lib/polimi/validation";
 import { ProvenanceChip, SEVERITY_BORDERS, SEVERITY_ICONS } from "./ProvenanceChip";
 
@@ -44,20 +43,8 @@ type Props = {
 
 export default function PlanIssuesAside({ validation, onOpenDetails }: Props) {
   const { errors, warnings, advice, hiddenCount } = bucketIssues(validation);
-  const clean = errors.length === 0 && warnings.length === 0;
-
   return (
     <div className="space-y-3">
-      {clean && (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-success/30 bg-success/5 py-6 text-center text-sm">
-          <CheckCircle className="size-7 text-success" />
-          <span className="font-semibold text-success">Piano in regola per quest&apos;anno</span>
-          <span className="px-4 text-xs text-muted">
-            Nessun problema sul piano {validation.summary.academicYear}. Verificalo comunque sui Servizi Online.
-          </span>
-        </div>
-      )}
-
       <IssueGroup
         title={errors.length === 1 ? "1 problema da risolvere" : `${errors.length} problemi da risolvere`}
         tone="text-danger"
