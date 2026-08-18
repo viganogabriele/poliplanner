@@ -91,4 +91,5 @@ export interface DashboardPayload {
   exam_total_count: number;
   exam_passed_count: number;
   exam_average: number | null;
+  has_saved_plan: boolean;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type MouseEventHandler } from "react";
+import { useEffect, useRef, useState, type MouseEventHandler } from "react";
 import {
   Award,
   BookOpen,
@@ -15,7 +15,6 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/ui";
-import PwaInstallButton from "@/components/ui/PwaInstallButton";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard",      mobileLabel: "Home",   icon: LayoutDashboard, mobile: true },
@@ -48,14 +47,6 @@ export default function AppNav() {
   const currentItem = NAV_ITEMS.find((item) => isActive(item.href));
   const moreActive = MORE_NAV_ITEMS.some((item) => isActive(item.href));
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setMoreOpen(false);
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
   return (
     <>
       <nav
@@ -84,16 +75,6 @@ export default function AppNav() {
           ))}
         </div>
 
-        <div className="mt-auto space-y-2">
-          <PwaInstallButton />
-          <div className="rounded-card border border-border bg-surface/60 p-3 text-xs text-muted">
-            <div className="mb-2 flex items-center gap-2 text-secondary">
-              <span className="size-2 rounded-full bg-success" />
-              Istanza privata
-            </div>
-            I dati restano nel database di questa istanza.
-          </div>
-        </div>
       </nav>
 
       <header className="fixed inset-x-0 top-0 z-30 border-b border-border bg-background/90 backdrop-blur-xl lg:hidden">
@@ -126,6 +107,7 @@ export default function AppNav() {
           <MobileMoreMenu
             open={moreOpen}
             active={moreActive}
+            currentItem={moreActive ? currentItem : undefined}
             onToggle={() => setMoreOpen((value) => !value)}
             onClose={() => setMoreOpen(false)}
           />
@@ -138,18 +120,53 @@ export default function AppNav() {
 function MobileMoreMenu({
   open,
   active,
+  currentItem,
   onToggle,
   onClose,
 }: {
   open: boolean;
   active: boolean;
+  currentItem?: NavItem;
   onToggle: () => void;
   onClose: () => void;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const CurrentIcon = currentItem?.icon ?? MoreHorizontal;
+
+  useEffect(() => {
+    if (!open) return;
+    const focusTimer = window.setTimeout(() => {
+      const current = menuRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+      const first = menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]');
+      (current ?? first)?.focus();
+    }, 0);
+
+    function dismiss(event: PointerEvent) {
+      if (containerRef.current?.contains(event.target as Node)) return;
+      onClose();
+      requestAnimationFrame(() => triggerRef.current?.focus());
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+      requestAnimationFrame(() => triggerRef.current?.focus());
+    }
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose, open]);
+
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       {open && (
-        <div id="mobile-more-menu" role="menu" className="absolute bottom-full right-0 z-40 mb-3 w-56 rounded-2xl border border-border bg-surface-elevated p-2 shadow-elevated">
+        <div ref={menuRef} id="mobile-more-menu" role="menu" className="absolute bottom-full right-0 z-40 mb-3 w-56 rounded-2xl border border-border bg-surface-elevated p-2 shadow-elevated">
           {MORE_NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             return (
@@ -157,8 +174,12 @@ function MobileMoreMenu({
                 key={item.href}
                 href={item.href}
                 role="menuitem"
+                aria-current={currentItem?.href === item.href ? "page" : undefined}
                 onClick={onClose}
-                className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium text-secondary transition hover:bg-surface-hover hover:text-primary"
+                className={cn(
+                  "flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium transition hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+                  currentItem?.href === item.href ? "bg-accent/10 text-primary" : "text-secondary"
+                )}
               >
                 <Icon className="size-4 text-accent" aria-hidden="true" />
                 {item.label}
@@ -168,9 +189,10 @@ function MobileMoreMenu({
         </div>
       )}
       <button
+        ref={triggerRef}
         type="button"
         onClick={onToggle}
-        aria-label="Altro"
+        aria-label={currentItem ? `${currentItem.label}, apri altre destinazioni` : "Altre destinazioni"}
         aria-current={active ? "page" : undefined}
         aria-expanded={open}
         aria-controls="mobile-more-menu"
@@ -179,8 +201,8 @@ function MobileMoreMenu({
           active || open ? "bg-surface-elevated text-primary" : "text-muted hover:bg-surface-hover hover:text-secondary"
         )}
       >
-        <MoreHorizontal className={cn("size-5", active || open ? "text-accent" : "text-muted")} aria-hidden="true" />
-        <span aria-hidden="true">Altro</span>
+        <CurrentIcon className={cn("size-5", active || open ? "text-accent" : "text-muted")} aria-hidden="true" />
+        <span aria-hidden="true" className="max-w-full truncate">{currentItem?.mobileLabel ?? "Altro"}</span>
       </button>
     </div>
   );
@@ -194,7 +216,7 @@ function DesktopNavItem({ item, active }: { item: NavItem; active: boolean }) {
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group flex items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition",
+        "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
         active
           ? "bg-surface-elevated text-primary shadow-inset"
           : "text-secondary hover:bg-surface-hover hover:text-primary"

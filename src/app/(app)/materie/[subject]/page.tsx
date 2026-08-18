@@ -1,14 +1,15 @@
 import { use } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { getSubjectData } from "@/lib/subjects";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import SubjectTodoList from "@/features/subjects/SubjectTodoList";
-import { WEEKDAY_LABELS } from "@/lib/dates";
+import { formatItalianDate, WEEKDAY_LABELS } from "@/lib/dates";
 import { LESSON_MODE_LABELS } from "@/lib/types";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -38,21 +39,17 @@ export default function MateriePage({ params }: { params: Promise<{ subject: str
 
   return (
     <PageShell>
-      {/* Header */}
-      <div className="flex items-start gap-4">
-        <Link
-          href="/materie"
-          className="mt-1 grid size-9 shrink-0 place-items-center rounded-full border border-border text-muted transition hover:border-border-strong hover:text-primary"
-        >
-          <ArrowLeft className="size-4" />
+      <nav aria-label="Percorso" className="text-sm text-muted">
+        <Link href="/materie" className="inline-flex min-h-11 items-center gap-2 rounded-lg pr-3 font-semibold text-secondary transition hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          Torna alle materie
         </Link>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold text-primary">{data.subjectName}</h1>
-          <p className="mt-1 text-sm text-muted">
-            {data.doneCount} di {data.totalCount} lezioni completate
-          </p>
-        </div>
-      </div>
+      </nav>
+      <PageHeader
+        title={data.subjectName}
+        subtitle={`${data.doneCount} di ${data.totalCount} lezioni completate`}
+        eyebrow="Materia"
+      />
 
       {/* Progress bar */}
       <div className="rounded-card border border-border bg-surface p-4">
@@ -74,22 +71,27 @@ export default function MateriePage({ params }: { params: Promise<{ subject: str
       </div>
 
       {/* Related exam */}
-      {data.relatedCourse && (
-        <Card>
+      <Card>
           <CardHeader>
             <div>
               <CardTitle>Esame collegato</CardTitle>
-              <CardDescription>{data.relatedCourse.name} · {data.relatedCourse.cfu} CFU</CardDescription>
+              <CardDescription>
+                {data.relatedCourse ? `${data.relatedCourse.name} · ${data.relatedCourse.cfu} CFU` : "Nessuna associazione verificata con il catalogo"}
+              </CardDescription>
             </div>
-            <Link
-              href="/esami"
-              className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs text-muted transition hover:border-border-strong hover:text-primary"
-            >
-              <ExternalLink className="size-3" />
-              Vai agli esami
-            </Link>
+            {data.relatedCourse && (
+              <Link
+                href="/esami"
+                className="flex min-h-10 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-secondary transition hover:border-border-strong hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              >
+                Vai agli esami
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Link>
+            )}
           </CardHeader>
-          {data.examRecord ? (
+          {!data.relatedCourse ? (
+            <p className="text-sm text-muted">Nessun esame collegato. Controlla il codice corso nel Calendario.</p>
+          ) : data.examRecord ? (
             <div className="flex flex-wrap items-center gap-3">
               <Badge variant={STATUS_VARIANT[data.examRecord.status] ?? "neutral"}>
                 {STATUS_LABELS[data.examRecord.status] ?? data.examRecord.status}
@@ -100,14 +102,13 @@ export default function MateriePage({ params }: { params: Promise<{ subject: str
                 </span>
               )}
               {data.examRecord.passedAt && (
-                <span className="text-xs text-muted">Superato: {data.examRecord.passedAt}</span>
+                <span className="text-xs text-muted">Superato: {formatItalianDate(data.examRecord.passedAt)}</span>
               )}
             </div>
           ) : (
             <p className="text-sm text-muted">Nessun dato esame disponibile.</p>
           )}
-        </Card>
-      )}
+      </Card>
 
       {/* Backlog */}
       <Card>
@@ -120,21 +121,17 @@ export default function MateriePage({ params }: { params: Promise<{ subject: str
         <SubjectTodoList items={data.backlog} />
       </Card>
 
-      {/* Async lessons to watch */}
-      <Card>
+      {data.toWatch.length > 0 && <Card>
         <CardHeader>
           <CardTitle>Lezioni da guardare</CardTitle>
           <span className="text-xs text-muted">{data.toWatch.length} registrazioni future</span>
         </CardHeader>
-        {data.toWatch.length === 0 ? (
-          <p className="py-3 text-center text-sm text-muted">Nessuna registrazione futura da guardare.</p>
-        ) : (
           <ul className="flex flex-col gap-2">
             {data.toWatch.map((lesson) => (
               <li key={lesson.id} className="flex items-center gap-3 rounded-card border border-border bg-surface-muted/60 px-4 py-2.5">
                 <div className="min-w-0 flex-1 text-sm text-secondary">
                   {WEEKDAY_LABELS[lesson.weekday]},{" "}
-                  <span className="tabular-nums text-primary">{lesson.lesson_date}</span>
+                  <span className="tabular-nums text-primary">{formatItalianDate(lesson.lesson_date, "long")}</span>
                 </div>
                 <Badge variant={lesson.mode === "presenza" ? "active" : "warning"}>
                   {LESSON_MODE_LABELS[lesson.mode as "presenza" | "asincrona"] ?? lesson.mode}
@@ -142,8 +139,7 @@ export default function MateriePage({ params }: { params: Promise<{ subject: str
               </li>
             ))}
           </ul>
-        )}
-      </Card>
+      </Card>}
     </PageShell>
   );
 }

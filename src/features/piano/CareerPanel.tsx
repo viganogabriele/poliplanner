@@ -12,6 +12,7 @@ import { careerRows } from "@/lib/polimi/career";
 import { EXAM_STATUS_LABELS, GRADE_MAX, GRADE_MIN, type ExamStatus, type Track } from "@/lib/polimi/constraints";
 import type { CareerExamsMap } from "@/lib/polimi/career";
 import { cn } from "@/lib/ui";
+import { formatItalianDate } from "@/lib/dates";
 
 const STATUS_VARIANT: Record<ExamStatus, "neutral" | "success" | "warning" | "danger"> = {
   planned: "neutral",
@@ -101,7 +102,7 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
             aria-label="Insegnamento da aggiungere alla carriera"
             value={draft.code}
             onChange={(event) => setDraft((prev) => ({ ...prev, code: event.target.value }))}
-            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none"
+            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none focus:border-accent focus:ring-2 focus:ring-accent/40"
           >
             <option value="">Scegli un insegnamento…</option>
             {catalogOptions.map((course) => (
@@ -112,7 +113,7 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
             aria-label="Stato dell'esame"
             value={draft.status}
             onChange={(event) => setDraft((prev) => ({ ...prev, status: event.target.value as ExamStatus }))}
-            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none"
+            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none focus:border-accent focus:ring-2 focus:ring-accent/40"
           >
             {(Object.keys(EXAM_STATUS_LABELS) as ExamStatus[]).map((status) => (
               <option key={status} value={status}>{EXAM_STATUS_LABELS[status]}</option>
@@ -123,7 +124,7 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
             value={draft.grade}
             onChange={(event) => setDraft((prev) => ({ ...prev, grade: event.target.value }))}
             disabled={!draft.status.startsWith("passed_")}
-            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none disabled:opacity-50"
+            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none focus:border-accent focus:ring-2 focus:ring-accent/40 disabled:opacity-50"
           >
             <option value="">Voto</option>
             {GRADES.map((grade) => <option key={grade} value={grade}>{grade}</option>)}
@@ -134,7 +135,7 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
             value={draft.registeredAt}
             onChange={(event) => setDraft((prev) => ({ ...prev, registeredAt: event.target.value }))}
             disabled={!draft.status.startsWith("passed_")}
-            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none disabled:opacity-50"
+            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none focus:border-accent focus:ring-2 focus:ring-accent/40 disabled:opacity-50"
           />
           <Button variant="primary" onClick={addExam} disabled={isPending}>
             <Plus className="size-4" />
@@ -163,7 +164,7 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
               onChange={(event) => setImportText(event.target.value)}
               rows={6}
               placeholder={"082740; 25; 2025-02-10\n082746; 27; 2025-02-14"}
-              className="w-full rounded-xl border border-border bg-surface px-3 py-2 font-mono text-xs text-primary outline-none"
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 font-mono text-xs text-primary outline-none focus:border-accent focus:ring-2 focus:ring-accent/40"
             />
             <Button variant="secondary" size="sm" onClick={runImport} disabled={isPending}>
               <CheckCircle2 className="size-4" />
@@ -199,7 +200,7 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
               <div className="flex items-center gap-2">
                 {row.grade && <span className="font-mono text-sm font-semibold text-success">{row.grade}</span>}
                 <Badge variant={STATUS_VARIANT[row.status]}>{EXAM_STATUS_LABELS[row.status]}</Badge>
-                {row.registeredAt && <span className="text-xs text-muted">verb. {row.registeredAt}</span>}
+                {row.registeredAt && <span className="text-xs text-muted">verb. {formatItalianDate(row.registeredAt)}</span>}
                 {row.status === "passed_unregistered" && (
                   <Button
                     size="sm"
@@ -214,7 +215,8 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
                   type="button"
                   onClick={() => run("Voce rimossa dalla carriera.", () => deleteCareerExamAction(row.courseCode))}
                   disabled={isPending}
-                  className="rounded-full p-1.5 text-muted transition hover:bg-danger/10 hover:text-danger"
+                  title={`Rimuovi ${row.name} dalla carriera`}
+                  className="grid size-10 place-items-center rounded-lg text-muted transition hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
                   aria-label={`Rimuovi ${row.name} dalla carriera`}
                 >
                   <Trash2 className="size-4" />

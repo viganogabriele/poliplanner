@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 import { cn } from "@/lib/ui";
 
@@ -12,47 +13,90 @@ interface InfoButtonProps {
 
 export default function InfoButton({ title, children, className }: InfoButtonProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: 16, top: 16 });
   const popoverId = useId();
+  const titleId = `${popoverId}-title`;
+
+  const close = useCallback((returnFocus = true) => {
+    setOpen(false);
+    if (returnFocus) window.setTimeout(() => triggerRef.current?.focus(), 0);
+  }, []);
+
+  const updatePosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 32);
+    const panelHeight = panelRef.current?.offsetHeight ?? 180;
+    const left = Math.min(Math.max(16, rect.left), Math.max(16, window.innerWidth - width - 16));
+    const below = rect.bottom + 8;
+    const top = below + panelHeight <= window.innerHeight - 16
+      ? below
+      : Math.max(16, rect.top - panelHeight - 8);
+    setPosition({ left, top });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    updatePosition();
+    const focusTimer = window.setTimeout(() => {
+      updatePosition();
+      panelRef.current?.focus();
+    }, 0);
+    function handlePointer(e: PointerEvent) {
+      const target = e.target as Node;
+      if (!triggerRef.current?.contains(target) && !panelRef.current?.contains(target)) close();
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close();
+      }
     }
-    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("pointerdown", handlePointer);
     document.addEventListener("keydown", handleKey);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
     return () => {
-      document.removeEventListener("mousedown", handleClick);
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("pointerdown", handlePointer);
       document.removeEventListener("keydown", handleKey);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [open]);
+  }, [close, open, updatePosition]);
 
   return (
-    <div ref={ref} className={cn("relative inline-flex shrink-0", className)}>
+    <div className={cn("relative inline-flex shrink-0", className)}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={`Info: ${title}`}
         aria-expanded={open}
         aria-controls={popoverId}
-        className="grid size-6 place-items-center rounded-full text-muted transition hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+        title={`Informazioni: ${title}`}
+        className="grid size-10 place-items-center rounded-lg text-muted transition hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
       >
         <Info className="size-3.5" aria-hidden="true" />
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
+          ref={panelRef}
           id={popoverId}
-          role="tooltip"
-          className="absolute left-0 top-8 z-50 w-72 rounded-xl border border-border bg-surface-elevated p-4 shadow-elevated"
+          role="dialog"
+          aria-labelledby={titleId}
+          tabIndex={-1}
+          style={{ left: position.left, top: position.top, width: "min(20rem, calc(100vw - 2rem))" }}
+          className="fixed z-[70] max-h-[min(24rem,calc(100vh-2rem))] overflow-y-auto rounded-xl border border-border bg-surface-elevated p-4 shadow-elevated focus:outline-none"
         >
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-accent">{title}</p>
+          <p id={titleId} className="mb-2 text-xs font-semibold uppercase tracking-wide text-accent">{title}</p>
           <div className="space-y-1.5 text-xs leading-relaxed text-secondary">{children}</div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

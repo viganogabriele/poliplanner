@@ -3,7 +3,7 @@
 import { useMemo, useOptimistic, useTransition } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { setLessonModeAction, toggleLessonAction } from "@/app/actions";
-import { WEEKDAY_LABELS } from "@/lib/dates";
+import { formatItalianDate, WEEKDAY_LABELS } from "@/lib/dates";
 import { LESSON_MODE_LABELS, type LessonMode } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import type { SubjectLesson } from "@/lib/subjects";
@@ -62,17 +62,19 @@ export default function SubjectTodoList({ items }: SubjectTodoListProps) {
             transition={{ duration: 0.18 }}
             className="flex items-center gap-3 rounded-card border border-border bg-surface-muted/60 px-4 py-3 transition"
           >
-            <input
-              type="checkbox"
-              checked={false}
-              onChange={(e) => handleToggle(item.id, e.target.checked)}
-              disabled={isPending}
-              aria-label={`Segna la lezione del ${item.lesson_date} come completata`}
-              className="size-5 cursor-pointer rounded accent-accent"
-            />
+            <label className="-m-2 grid size-10 shrink-0 place-items-center">
+              <input
+                type="checkbox"
+                checked={false}
+                onChange={(e) => handleToggle(item.id, e.target.checked)}
+                disabled={isPending}
+                aria-label={`Segna la lezione del ${formatItalianDate(item.lesson_date, "long")} come completata`}
+                className="size-5 cursor-pointer rounded accent-accent"
+              />
+            </label>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-primary">
-                {WEEKDAY_LABELS[item.weekday]}, <span className="tabular-nums">{item.lesson_date}</span>
+                {WEEKDAY_LABELS[item.weekday]}, <span className="tabular-nums">{formatItalianDate(item.lesson_date, "long")}</span>
               </p>
             </div>
             <button
@@ -80,10 +82,10 @@ export default function SubjectTodoList({ items }: SubjectTodoListProps) {
               onClick={() => handleModeToggle(item.id, mode)}
               disabled={isPending}
               aria-label={`Cambia modalità: attualmente ${LESSON_MODE_LABELS[mode]}`}
-              className="transition hover:opacity-80 disabled:cursor-not-allowed"
+              className="inline-flex min-h-10 items-center rounded-lg px-1 transition hover:bg-surface-hover disabled:cursor-not-allowed"
             >
               <Badge variant={mode === "presenza" ? "active" : "warning"}>
-                {LESSON_MODE_LABELS[mode]}
+                {mode === "asincrona" ? "Asincrona" : "In presenza"}
               </Badge>
             </button>
           </motion.li>

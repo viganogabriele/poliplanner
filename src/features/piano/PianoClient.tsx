@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { BookOpen, CheckCircle2, FlaskConical, GraduationCap, History, Save, ShieldCheck } from "lucide-react";
+import { BookOpen, CheckCircle2, FlaskConical, GraduationCap, History, Layers3, Save, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import {
@@ -99,6 +99,7 @@ export default function PianoClient({
   const [simulatorOpen, setSimulatorOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [futureOpen, setFutureOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   const catalog = useMemo(() => getCatalog(scenario.cycle.academicYear), [scenario.cycle.academicYear]);
   const context = useMemo<PlanValidationContext>(() => ({
@@ -363,13 +364,14 @@ export default function PianoClient({
   // ---------------------------------------------------------------- render
 
   return (
-    <div className="flex min-h-[calc(100vh-10rem)] overflow-hidden rounded-panel border border-border bg-background-soft shadow-card">
-      <div className="flex-1 space-y-5 overflow-y-auto p-4 pb-8 sm:p-5">
+    <div className="flex rounded-panel border border-border bg-background-soft shadow-card xl:min-h-[calc(100vh-10rem)] xl:overflow-hidden">
+      <div className="min-w-0 flex-1 space-y-5 p-4 pb-8 sm:p-5 xl:overflow-y-auto">
         <PlanHeader
           validation={validation}
           planStatus={scenario.cycle.status}
           validationMode={scenario.cycle.validationMode}
           isActive={scenario.cycle.id !== null && scenario.cycle.id === currentActiveCycleId}
+          isSaved={scenario.cycle.id !== null && !scenario.cycle.isVirtual}
           dataStatusReason={catalog.dataStatus === "to_verify" ? catalog.dataStatusReason : null}
           nextYearAction={nextYearAction}
           onNextYear={handleNextYear}
@@ -419,27 +421,55 @@ export default function PianoClient({
           editableSemester={editableSemester}
           onRemove={removeEntry}
           onSetPosition={setPosition}
-          onOpenCatalog={() => setCatalogOpen(true)}
         />
 
+        <button
+          type="button"
+          onClick={() => setDetailsOpen(true)}
+          className={cn(
+            "flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left sm:hidden",
+            buckets.errors.length > 0
+              ? "border-danger/30 bg-danger/5"
+              : buckets.warnings.length > 0
+                ? "border-warning/30 bg-warning/5"
+                : "border-success/30 bg-success/5"
+          )}
+        >
+          <span>
+            <span className="block text-sm font-semibold text-primary">
+              {buckets.errors.length > 0
+                ? `${buckets.errors.length} problemi da risolvere`
+                : buckets.warnings.length > 0
+                  ? `${buckets.warnings.length} avvisi da controllare`
+                  : "Piano in regola per quest'anno"}
+            </span>
+            <span className="mt-0.5 block text-xs text-muted">Apri la verifica completa</span>
+          </span>
+          <CheckCircle2 className={cn("size-5 shrink-0", buckets.errors.length > 0 ? "text-danger" : buckets.warnings.length > 0 ? "text-warning" : "text-success")} />
+        </button>
+
         {!isHistorical && (
-          <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
-            <Button variant="secondary" onClick={save} disabled={isPending}>
-              <Save className="size-4" />
-              Salva bozza
-            </Button>
-            <Button variant="ghost" onClick={markReady} disabled={isPending || buckets.errors.length > 0}>
-              <CheckCircle2 className="size-4" />
-              Pronto da compilare
-            </Button>
-            <Button variant="ghost" onClick={markCompiled} disabled={isPending || scenario.cycle.status !== "ready"}>
-              <GraduationCap className="size-4" />
-              Ho copiato su PoliMi
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setGuideOpen((value) => !value)} aria-expanded={guideOpen}>
-              <BookOpen className="size-4" />
-              Guida
-            </Button>
+          <div className="rounded-panel border border-border bg-surface/40 p-4">
+            <p className="text-sm font-semibold text-primary">Compilazione del piano</p>
+            <ol className="mt-3 grid gap-2 text-xs sm:grid-cols-3" aria-label="Stato della compilazione">
+              <WorkflowStep number="1" label="Salva la proposta" active={scenario.cycle.status === "draft"} complete={scenario.cycle.id !== null} />
+              <WorkflowStep number="2" label="Segna come pronta" active={scenario.cycle.status === "ready"} complete={scenario.cycle.status === "ready" || scenario.cycle.status === "polimi_compiled"} />
+              <WorkflowStep number="3" label="Conferma la copia su PoliMi" active={scenario.cycle.status === "polimi_compiled"} complete={scenario.cycle.status === "polimi_compiled"} />
+            </ol>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <Button variant="primary" onClick={save} disabled={isPending} className="w-full sm:w-auto">
+                <Save className="size-4" />
+                {scenario.cycle.id === null ? "Salva piano" : "Salva bozza"}
+              </Button>
+              <Button variant="secondary" onClick={markReady} disabled={isPending || buckets.errors.length > 0} className="w-full sm:w-auto">
+                <CheckCircle2 className="size-4" />
+                Pronto da compilare
+              </Button>
+              <Button variant="secondary" onClick={markCompiled} disabled={isPending || scenario.cycle.status !== "ready"} className="w-full sm:w-auto">
+                <GraduationCap className="size-4" />
+                Conferma copia su PoliMi
+              </Button>
+            </div>
           </div>
         )}
 
@@ -460,98 +490,96 @@ export default function PianoClient({
           </div>
         )}
 
-        {guideOpen && <LazyPlanGuide onClose={() => setGuideOpen(false)} />}
-
-        {/* Carriera: consultabile, ma non è un'azione quotidiana. */}
         <CollapsibleSection
-          title="Carriera"
-          description="Cosa risulta davvero in libretto. Solo gli esami verbalizzati chiudono un'attività."
-          badge={<Badge variant="success" className="py-0 text-[10px]">{validation.summary.registeredCareerCfu} CFU</Badge>}
-          open={careerOpen}
-          onToggle={() => setCareerOpen((value) => !value)}
-        >
-          {careerOpen && (
-            <LazyCareerPanel
-              exams={exams}
-              academicYear={scenario.cycle.academicYear}
-              track={scenario.cycle.track}
-              onChanged={setExams}
-            />
-          )}
-        </CollapsibleSection>
-
-        {/* Anteprima anni successivi: consultabile, chiusa di default, mai un problema. */}
-        <CollapsibleSection
-          title="Anteprima anni successivi"
-          description="Regole che diventeranno esigibili più avanti. Non riguardano il piano di quest'anno."
-          badge={futureCount > 0 ? <Badge variant="neutral" className="py-0 text-[10px]">{futureCount}</Badge> : undefined}
-          open={futureOpen}
-          onToggle={() => setFutureOpen((value) => !value)}
+          title="Altre funzioni"
+          description="Carriera, guida, simulatore, anni successivi e storico."
+          badge={<Layers3 className="size-4 text-muted" />}
+          open={toolsOpen}
+          onToggle={() => setToolsOpen((value) => !value)}
           tone="muted"
         >
-          {futureOpen && <LazyFutureYearsPanel catalog={catalog} validation={validation} />}
-        </CollapsibleSection>
+          <div className="space-y-3">
+            <Button variant="secondary" onClick={() => setGuideOpen((value) => !value)} aria-expanded={guideOpen}>
+              <BookOpen className="size-4" />
+              {guideOpen ? "Chiudi guida" : "Apri guida"}
+            </Button>
+            {guideOpen && <LazyPlanGuide onClose={() => setGuideOpen(false)} />}
 
-        {/* Simulatore: funzione avanzata, non una tab primaria. */}
-        <CollapsibleSection
-          title="Simulatore di scenari"
-          description="Funzione avanzata: prova ipotesi sugli esami senza toccare carriera e piano."
-          badge={<FlaskConical className="size-4 text-accent" />}
-          open={simulatorOpen}
-          onToggle={() => setSimulatorOpen((value) => !value)}
-          tone="muted"
-        >
-          {simulatorOpen && (
-            <LazySimulatorPanel
-              scenario={scenario}
-              context={context}
-              onConfirm={isHistorical ? undefined : applySimulation}
-            />
-          )}
-        </CollapsibleSection>
+            <CollapsibleSection
+              title="Carriera"
+              description="Cosa risulta davvero in libretto. Solo gli esami verbalizzati chiudono un'attività."
+              badge={<Badge variant="success" className="py-0 text-[10px]">{validation.summary.registeredCareerCfu} CFU</Badge>}
+              open={careerOpen}
+              onToggle={() => setCareerOpen((value) => !value)}
+            >
+              {careerOpen && <LazyCareerPanel exams={exams} academicYear={scenario.cycle.academicYear} track={scenario.cycle.track} onChanged={setExams} />}
+            </CollapsibleSection>
 
-        {/* Storico: separato visivamente dalle azioni quotidiane. */}
-        <CollapsibleSection
-          title="Scenari salvati e storico"
-          description="Archivio dei piani: consultazione, archiviazione e creazione manuale."
-          badge={<span className="flex items-center gap-1 text-[10px] text-muted"><History className="size-3.5" />{cycles.length}</span>}
-          open={historyOpen}
-          onToggle={() => setHistoryOpen((value) => !value)}
-          tone="muted"
-        >
-          {historyOpen && (
-            <LazyScenarioHistoryPanel
-              cycles={cycles}
-              currentCycleId={scenario.cycle.id}
-              activeCycleId={currentActiveCycleId}
-              currentAcademicYear={scenario.cycle.academicYear}
-              currentStudentYear={scenario.cycle.studentYear}
-              currentTrack={scenario.cycle.track}
-              validationMode={scenario.cycle.validationMode}
-              isHistorical={isHistorical}
-              isCompiled={scenario.cycle.status === "polimi_compiled" && !scenario.cycle.archivedAt}
-              pending={isPending}
-              onSelect={goToScenario}
-              onSetActive={() => cycleAction(setActivePlanCycleAction, "Scenario impostato come attivo.", { activates: true })}
-              onArchive={() => cycleAction(archivePlanCycleAction, "Scenario archiviato.", { redirect: "/piano", clearsActive: true })}
-              onRestore={() => cycleAction(restorePlanCycleAction, "Scenario ripristinato.")}
-              onCreate={createAnnual}
-              onDuplicateNextYear={duplicateNextYear}
-              onCreateRevision={createRevision}
-            />
-          )}
+            <CollapsibleSection
+              title="Anteprima anni successivi"
+              description="Regole che diventeranno esigibili più avanti."
+              badge={futureCount > 0 ? <Badge variant="neutral" className="py-0 text-[10px]">{futureCount}</Badge> : undefined}
+              open={futureOpen}
+              onToggle={() => setFutureOpen((value) => !value)}
+              tone="muted"
+            >
+              {futureOpen && <LazyFutureYearsPanel catalog={catalog} validation={validation} />}
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Simulatore di scenari"
+              description="Prova ipotesi sugli esami senza toccare carriera e piano."
+              badge={<FlaskConical className="size-4 text-accent" />}
+              open={simulatorOpen}
+              onToggle={() => setSimulatorOpen((value) => !value)}
+              tone="muted"
+            >
+              {simulatorOpen && <LazySimulatorPanel scenario={scenario} context={context} onConfirm={isHistorical ? undefined : applySimulation} />}
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Scenari salvati e storico"
+              description="Consultazione, archiviazione e creazione manuale dei piani."
+              badge={<span className="flex items-center gap-1 text-[10px] text-muted"><History className="size-3.5" />{cycles.length}</span>}
+              open={historyOpen}
+              onToggle={() => setHistoryOpen((value) => !value)}
+              tone="muted"
+            >
+              {historyOpen && (
+                <LazyScenarioHistoryPanel
+                  cycles={cycles}
+                  currentCycleId={scenario.cycle.id}
+                  activeCycleId={currentActiveCycleId}
+                  currentAcademicYear={scenario.cycle.academicYear}
+                  currentStudentYear={scenario.cycle.studentYear}
+                  currentTrack={scenario.cycle.track}
+                  validationMode={scenario.cycle.validationMode}
+                  isHistorical={isHistorical}
+                  isCompiled={scenario.cycle.status === "polimi_compiled" && !scenario.cycle.archivedAt}
+                  pending={isPending}
+                  onSelect={goToScenario}
+                  onSetActive={() => cycleAction(setActivePlanCycleAction, "Scenario impostato come attivo.", { activates: true })}
+                  onArchive={() => cycleAction(archivePlanCycleAction, "Scenario archiviato.", { redirect: "/piano", clearsActive: true })}
+                  onRestore={() => cycleAction(restorePlanCycleAction, "Scenario ripristinato.")}
+                  onCreate={createAnnual}
+                  onDuplicateNextYear={duplicateNextYear}
+                  onCreateRevision={createRevision}
+                />
+              )}
+            </CollapsibleSection>
+          </div>
         </CollapsibleSection>
 
         {detailsOpen && (
           <LazyAllRulesPanel catalog={catalog} validation={validation} onClose={() => setDetailsOpen(false)} />
         )}
 
-        <div className="lg:hidden">
+        <div className="xl:hidden">
           <PlanIssuesAside validation={validation} onOpenDetails={() => setDetailsOpen(true)} />
         </div>
       </div>
 
-      <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-border bg-background-soft p-4 lg:block">
+      <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-border bg-background-soft p-4 xl:block">
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">
           Verifica del piano {scenario.cycle.academicYear}
         </p>
@@ -576,5 +604,22 @@ export default function PianoClient({
         />
       )}
     </div>
+  );
+}
+
+function WorkflowStep({ number, label, active, complete }: { number: string; label: string; active: boolean; complete: boolean }) {
+  return (
+    <li className={cn(
+      "flex items-center gap-2 rounded-xl border px-3 py-2",
+      active ? "border-accent/40 bg-accent/5 text-primary" : complete ? "border-success/25 bg-success/5 text-secondary" : "border-border bg-background-soft/50 text-muted"
+    )}>
+      <span className={cn(
+        "grid size-6 shrink-0 place-items-center rounded-md font-semibold",
+        active ? "bg-accent text-background" : complete ? "bg-success/15 text-success" : "bg-surface-muted text-muted"
+      )}>
+        {complete && !active ? <CheckCircle2 className="size-3.5" aria-hidden="true" /> : number}
+      </span>
+      <span>{label}</span>
+    </li>
   );
 }

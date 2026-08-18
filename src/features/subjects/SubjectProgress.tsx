@@ -9,6 +9,7 @@
 import Link from "next/link";
 import type { SubjectProgress as SubjectProgressData } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
+import { ArrowRight } from "lucide-react";
 
 interface SubjectProgressProps {
   subjects: SubjectProgressData[];
@@ -34,15 +35,17 @@ export default function SubjectProgress({ subjects }: SubjectProgressProps) {
         <Link
           key={s.subject}
           href={`/materie/${encodeURIComponent(s.subject)}`}
-          className="block rounded-card border border-border bg-surface-muted/70 p-4 shadow-inset transition hover:border-border-strong hover:bg-surface-hover"
+          aria-label={`Apri ${s.subject}`}
+          className="group block rounded-card border border-border bg-surface-muted/70 p-4 shadow-inset transition hover:-translate-y-0.5 hover:border-border-strong hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
         >
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="min-w-0 text-sm font-semibold leading-snug text-primary">
               {s.subject}
             </div>
-            <Badge variant="neutral" className="shrink-0">
-              {s.total} tot.
-            </Badge>
+            <div className="flex shrink-0 items-center gap-2">
+              <Badge variant="neutral">{s.total} tot.</Badge>
+              <ArrowRight className="size-4 text-muted transition group-hover:translate-x-0.5 group-hover:text-accent" aria-hidden="true" />
+            </div>
           </div>
 
           <div className="mb-3 h-2.5 overflow-hidden rounded-full bg-background-soft">
@@ -65,6 +68,9 @@ export default function SubjectProgress({ subjects }: SubjectProgressProps) {
               {s.progress_percent}%
             </span>
           </div>
+          <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-accent">
+            Apri materia <ArrowRight className="size-3.5" aria-hidden="true" />
+          </span>
         </Link>
       ))}
     </div>

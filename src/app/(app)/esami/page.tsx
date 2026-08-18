@@ -3,6 +3,7 @@ import { getExams } from "@/lib/esami";
 import { getSchedule } from "@/lib/schedule";
 import EsamiClient from "@/features/esami/EsamiClient";
 import { PageShell } from "@/components/ui/PageShell";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Esami – Poliplanner" };
@@ -17,10 +18,7 @@ export default function EsamiPage() {
   );
   return (
     <PageShell>
-      <div className="mb-2">
-        <h1 className="text-2xl font-semibold text-primary">Esami</h1>
-        <p className="mt-1 text-sm text-muted">Monitora il tuo avanzamento verso la laurea</p>
-      </div>
+      <PageHeader title="Esami" subtitle="Monitora gli esiti verbalizzati e ciò che resta aperto in carriera." />
       <EsamiClient initialExams={exams} scenario={scenario} calendarSubjectByCourse={calendarSubjectByCourse} />
     </PageShell>
   );

@@ -4,7 +4,7 @@ import type { LessonMode } from "./types";
 
 const SUBJECTS: { weekday: number; subject: string; course_code: string | null; mode: LessonMode }[] = [
   { weekday: 0, subject: "Analisi Matematica II", course_code: "085923", mode: "presenza" },
-  { weekday: 1, subject: "Algoritmi e principi dell'informatica", course_code: "085900", mode: "presenza" },
+  { weekday: 1, subject: "Algoritmi e principi dell'informatica", course_code: "086067", mode: "presenza" },
   { weekday: 2, subject: "Basi di dati", course_code: "056889", mode: "asincrona" },
   { weekday: 3, subject: "Reti di calcolatori e Internet", course_code: "088804", mode: "asincrona" },
   { weekday: 4, subject: "Ingegneria del software", course_code: "085901", mode: "presenza" },

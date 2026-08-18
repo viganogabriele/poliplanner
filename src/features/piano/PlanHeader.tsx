@@ -8,6 +8,7 @@ import { TRACKS, type PlanStatus, type PlanValidationMode } from "@/lib/polimi/c
 import type { PlanValidationResult } from "@/lib/polimi/validation";
 import type { NextYearAction } from "@/lib/pianoPage";
 import { cn } from "@/lib/ui";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 /**
  * Testata compatta. Risponde nell'ordine alle prime due domande della pagina: qual è il piano
@@ -39,6 +40,7 @@ type Props = {
   planStatus: PlanStatus;
   validationMode: PlanValidationMode;
   isActive: boolean;
+  isSaved: boolean;
   dataStatusReason: string | null;
   nextYearAction: NextYearAction | null;
   onNextYear: () => void;
@@ -50,6 +52,7 @@ export default function PlanHeader({
   planStatus,
   validationMode,
   isActive,
+  isSaved,
   dataStatusReason,
   nextYearAction,
   onNextYear,
@@ -59,31 +62,43 @@ export default function PlanHeader({
   const tone = STATUS_TONE[summary.status];
 
   return (
-    <header className="space-y-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h1 className="text-lg font-semibold text-primary">
-          Piano di Studi <span className="font-mono">{summary.academicYear}</span>
-        </h1>
-        <span className="text-sm text-secondary">
-          anno {summary.studentYear} · {TRACKS[summary.track].label}
-        </span>
-        <Badge variant={planStatus === "polimi_compiled" ? "success" : planStatus === "ready" ? "active" : "neutral"}>
-          {STATUS_LABEL[planStatus]}
+    <div className="space-y-4">
+      <PageHeader
+        title="Piano di studi"
+        eyebrow={`Anno accademico ${summary.academicYear}`}
+        subtitle={`Anno ${summary.studentYear} · ${TRACKS[summary.track].label}`}
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant={!isSaved ? "warning" : planStatus === "polimi_compiled" ? "success" : planStatus === "ready" ? "active" : "neutral"}>
+          {!isSaved ? "Proposta non salvata" : STATUS_LABEL[planStatus]}
         </Badge>
-        {isActive
+        {isSaved && (isActive
           ? <Badge variant="active" dot>Piano attivo</Badge>
-          : <Badge variant="neutral">In consultazione</Badge>}
+          : <Badge variant="neutral">In consultazione</Badge>)}
         {validationMode === "second_semester_revision" && (
           <Badge variant="active">{MODE_LABEL[validationMode]}</Badge>
         )}
-        <Badge variant={tone.variant} className="gap-1.5 font-semibold">
-          {tone.icon}
-          {tone.label}
-        </Badge>
         {summary.dataStatus === "to_verify" && <Badge variant="warning">Dati da riconfermare</Badge>}
       </div>
 
-      {nextYearAction && (
+      {!isSaved && (
+        <p className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-sm leading-relaxed text-secondary">
+          Questa è una proposta calcolata dall&apos;app. Non diventa un piano attivo finché non la salvi.
+        </p>
+      )}
+
+      <div className={cn(
+        "hidden items-start gap-3 rounded-xl border px-4 py-3 sm:flex",
+        tone.variant === "success" ? "border-success/30 bg-success/5" : tone.variant === "warning" ? "border-warning/30 bg-warning/5" : "border-danger/30 bg-danger/5"
+      )}>
+        <span className={tone.variant === "success" ? "text-success" : tone.variant === "warning" ? "text-warning" : "text-danger"}>{tone.icon}</span>
+        <div>
+          <p className="text-sm font-semibold text-primary">{tone.label}</p>
+          <p className="mt-0.5 text-xs text-muted">La verifica considera solo gli obblighi esigibili nel piano corrente.</p>
+        </div>
+      </div>
+
+      {nextYearAction && isSaved && (
         <div className="flex flex-col gap-3 rounded-xl border border-accent/40 bg-accent/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="flex items-center gap-2 text-sm font-semibold text-primary">
@@ -107,18 +122,19 @@ export default function PlanHeader({
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <Metric label="Chiuso in carriera" value={summary.registeredCareerCfu} hint="CFU verbalizzati" tone="success" />
-        <Metric label="Da reinserire" value={summary.reinsertedCfu} hint="Frequenze già acquisite" tone="warning" />
-        <Metric label="Nuove frequenze" value={summary.newFrequencyCfu} hint="Scelte per quest'anno" tone="accent" />
-        <Metric
-          label="Per contribuzione"
-          value={summary.contributionCfu}
-          hint="Solo nuove frequenze"
-          info={summary.contributionRule}
-        />
+      <div className="grid gap-2 sm:grid-cols-[1.2fr_2fr]">
+        <div className="rounded-xl border border-accent/30 bg-accent/5 px-4 py-3">
+          <p className="text-xs font-semibold text-secondary">Totale del piano</p>
+          <p className="mt-1 whitespace-nowrap font-mono text-3xl font-semibold text-accent">{summary.effectiveCfu} CFU</p>
+          <p className="mt-1 text-xs text-muted">Attività effettive di quest&apos;anno</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <Metric label="Verbalizzati" value={summary.registeredCareerCfu} hint="in carriera" tone="success" />
+          <Metric label="Reinseriti" value={summary.reinsertedCfu} hint="già frequentati" tone="warning" />
+          <Metric label="Nuovi" value={summary.contributionCfu} hint="per contribuzione" tone="accent" info={summary.contributionRule} />
+        </div>
       </div>
-    </header>
+    </div>
   );
 }
 
@@ -138,16 +154,16 @@ function Metric({
   return (
     <div className="rounded-xl border border-border bg-surface/60 px-3 py-2">
       <div className="flex items-start justify-between gap-1">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</p>
+        <p className="text-xs font-semibold text-secondary">{label}</p>
         {info && <InfoButton title={label}><p>{info}</p></InfoButton>}
       </div>
       <p className={cn(
-        "font-mono text-lg font-semibold",
+        "whitespace-nowrap font-mono text-xl font-semibold",
         tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : tone === "accent" ? "text-accent" : "text-primary"
       )}>
         {value}
       </p>
-      <p className="text-[10px] text-muted">{hint}</p>
+      <p className="text-[11px] text-muted">{hint}</p>
     </div>
   );
 }

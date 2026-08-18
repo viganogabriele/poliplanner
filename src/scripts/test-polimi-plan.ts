@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import { closeDb, getDb } from "../lib/db";
-import { addCalendarDays, isISODate, today } from "../lib/dates";
+import { addCalendarDays, formatItalianDate, isISODate, today } from "../lib/dates";
 import {
   buildAnnualScenario,
   buildDefaultScenario,
@@ -40,6 +40,8 @@ import { simulate, suggestSimulations } from "../lib/polimi/simulator";
 import { validatePlanScenario, type PlanValidationContext, type PlanValidationResult } from "../lib/polimi/validation";
 import { saveSchedule, validateScheduleRows } from "../lib/schedule";
 import { resetDatabase } from "../lib/schema";
+import { seedDatabase } from "../lib/seed";
+import { resolveSubjectCourse, subjectMatchesCourse } from "../lib/subjects";
 
 const root = mkdtempSync(path.join(tmpdir(), "poliplanner-v3-"));
 process.env.POLIPLANNER_DB_PATH = path.join(root, "db", "test.db");
@@ -97,6 +99,7 @@ try {
   assert.equal(isISODate("2026-2-28"), false);
   assert.equal(isISODate(today()), true);
   assert.equal(addCalendarDays("2026-12-31", 1), "2027-01-01");
+  assert.equal(formatItalianDate("2026-08-18", "long"), "18 agosto 2026");
 
   assert.equal(getCatalog(AA_2025).dataStatus, "verified_from_manifesto");
   assert.equal(getCatalog(AA_2026).dataStatus, "to_verify", "Il Manifesto 2026/27 non è confermato: i dati vanno marcati da verificare");
@@ -1336,6 +1339,16 @@ try {
   // =========================================================================
   // 9. Regressioni su calendario, voti e migrazione legacy
   // =========================================================================
+  reset();
+  seedDatabase(getDb(), "2026-08-18");
+  const seededAlgorithm = getDb().prepare("SELECT subject, course_code FROM schedule WHERE subject LIKE 'Algoritmi%' LIMIT 1")
+    .get() as { subject: string; course_code: string };
+  assert.equal(seededAlgorithm.course_code, "086067", "I dati di esempio collegano Algoritmi al codice di Algoritmi");
+  assert.equal(subjectMatchesCourse(seededAlgorithm.subject, "Algoritmi e Principi dell'Informatica"), true);
+  assert.equal(subjectMatchesCourse(seededAlgorithm.subject, "Chimica Generale"), false, "Un codice incoerente non deve mostrare un esame collegato");
+  assert.equal(resolveSubjectCourse(CATALOG, seededAlgorithm.subject, "085900"), undefined, "Il dettaglio materia rifiuta il codice di Chimica per Algoritmi");
+  assert.equal(resolveSubjectCourse(CATALOG, seededAlgorithm.subject, "086067")?.code, "086067", "Il dettaglio materia accetta il codice corretto di Algoritmi");
+
   reset();
   {
     const start = "2026-09-01";

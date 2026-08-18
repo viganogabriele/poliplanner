@@ -118,7 +118,8 @@ export function getDashboard(): DashboardPayload {
   // --- Exam stats ---
   // La carriera è la fonte di verità: il piano annuale copre solo un anno accademico.
   const examsMap = getExams();
-  const planCodes = getCurrentPlanScenario().entries
+  const planScenario = getCurrentPlanScenario();
+  const planCodes = planScenario.entries
     .filter((entry) => entry.position === "effective")
     .map((entry) => entry.courseCode);
   const trackedCodes = new Set([...Object.keys(examsMap), ...planCodes]);
@@ -138,6 +139,7 @@ export function getDashboard(): DashboardPayload {
     exam_total_count,
     exam_passed_count,
     exam_average,
+    has_saved_plan: planScenario.cycle.id !== null && !planScenario.cycle.isVirtual,
   };
 }
 

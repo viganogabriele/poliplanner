@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useOptimistic, useTransition } from "react";
+import { useId, useMemo, useState, useOptimistic, useTransition } from "react";
 import type { ReactNode } from "react";
 import { CheckCircle2, ChevronUp, Pencil, X } from "lucide-react";
 import Link from "next/link";
@@ -15,6 +15,8 @@ import InfoButton from "@/components/ui/InfoButton";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { IconButton } from "@/components/ui/IconButton";
+import { fieldLabelClass, inputClass, selectClass } from "@/components/ui/Field";
 import StatTile from "@/components/ui/StatTile";
 import { cn } from "@/lib/ui";
 import { today } from "@/lib/dates";
@@ -58,6 +60,8 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
   const [filterStatus, setFilterStatus] = useState<"all" | ExamStatus>("all");
   const [expandedExam, setExpandedExam] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
+  const yearFilterId = useId();
+  const statusFilterId = useId();
   const [, startTransition] = useTransition();
 
   // Il catalogo è quello dell'anno accademico del piano: non esiste un anno "di default".
@@ -271,48 +275,64 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
         </Card>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <select
-          value={filterYear === "all" ? "all" : String(filterYear)}
-          onChange={(e) => setFilterYear(e.target.value === "all" ? "all" : Number(e.target.value) as 1|2|3)}
-          className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-primary outline-none"
-        >
-          <option value="all">Tutti gli anni</option>
-          {availableYears.map((y) => (
-            <option key={y} value={String(y)}>Anno {y}</option>
-          ))}
-        </select>
-        <div className="flex items-center gap-1.5">
+      <section aria-label="Filtri esami" className="rounded-card border border-border bg-surface/60 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-primary">Filtri</h2>
+            <p className="text-xs text-muted">{filtered.length} {filtered.length === 1 ? "esame visualizzato" : "esami visualizzati"} su {rows.length}</p>
+          </div>
+          {(filterYear !== "all" || filterStatus !== "all") && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => { setFilterYear("all"); setFilterStatus("all"); }}
+            >
+              Reimposta filtri
+            </Button>
+          )}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label htmlFor={yearFilterId} className={fieldLabelClass}>Anno</label>
+            <select
+              id={yearFilterId}
+              value={filterYear === "all" ? "all" : String(filterYear)}
+              onChange={(e) => setFilterYear(e.target.value === "all" ? "all" : Number(e.target.value) as 1|2|3)}
+              className={selectClass()}
+            >
+              <option value="all">Tutti gli anni</option>
+              {availableYears.map((y) => (
+                <option key={y} value={String(y)}>Anno {y}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <span className="flex items-center gap-1.5">
+              <label htmlFor={statusFilterId} className={fieldLabelClass}>Stato</label>
+              <InfoButton title="Stati esame">
+                <p><strong>Da fare</strong>: esame non ancora affrontato.</p>
+                <p><strong>Non passato</strong>: tentato ma non superato.</p>
+                <p><strong>Superato</strong>: passato, in attesa di verbalizzazione.</p>
+                <p><strong>Verbalizzato</strong>: registrato ufficialmente, contribuisce alla media.</p>
+                <p><strong>Senza frequenza</strong>: corso senza esame associato.</p>
+                <p><strong>Non richiesto</strong>: non necessario per il piano.</p>
+              </InfoButton>
+            </span>
           <select
+            id={statusFilterId}
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
-            className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-primary outline-none"
+              className={selectClass()}
           >
             <option value="all">Tutti gli stati</option>
             {(Object.keys(STATUS_LABELS) as ExamStatus[]).map((s) => (
               <option key={s} value={s}>{STATUS_LABELS[s]}</option>
             ))}
           </select>
-          <InfoButton title="Stati esame">
-            <p><strong>Da fare</strong>: esame non ancora affrontato.</p>
-            <p><strong>Non passato</strong>: tentato ma non superato.</p>
-            <p><strong>Superato</strong>: passato, in attesa di verbalizzazione.</p>
-            <p><strong>Verbalizzato</strong>: registrato ufficialmente, contribuisce alla media.</p>
-            <p><strong>Senza frequenza</strong>: corso senza esame associato.</p>
-            <p><strong>Non richiesto</strong>: non necessario per il piano.</p>
-          </InfoButton>
+          </div>
         </div>
-        {(filterYear !== "all" || filterStatus !== "all") && (
-          <button
-            type="button"
-            onClick={() => { setFilterYear("all"); setFilterStatus("all"); }}
-            className="rounded-full border border-border px-3 py-1.5 text-xs text-muted transition hover:text-primary"
-          >
-            Azzera filtri
-          </button>
-        )}
-      </div>
+      </section>
 
       {/* Exam groups by year */}
       {availableYears.map((year) => {
@@ -344,18 +364,16 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
                     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
                       <div className="min-w-0 flex-1">
                         {calendarSubject ? (
-                          <Link href={`/materie/${encodeURIComponent(calendarSubject)}`} className="truncate text-sm font-medium text-primary hover:text-accent transition">
+                          <Link href={`/materie/${encodeURIComponent(calendarSubject)}`} title={course.name} className="line-clamp-2 text-sm font-medium text-primary transition hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
                             {course.name}
                           </Link>
                         ) : (
-                          <p className="truncate text-sm font-medium text-primary">{course.name}</p>
+                          <p className="line-clamp-2 text-sm font-medium text-primary" title={course.name}>{course.name}</p>
                         )}
                         <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                           <p className="text-xs text-muted">{course.cfu} CFU</p>
-                          <Badge variant={entry.position === "supernumerary" ? "warning" : "neutral"} className="py-0 text-[10px]">
-                            {entry.position === "supernumerary" ? "Soprannumero" : "Effettivo"}
-                          </Badge>
-                          {!entry.feeCounted && <Badge variant="success" className="py-0 text-[10px]">CFU scalati</Badge>}
+                          <span className="text-xs text-muted">{entry.position === "supernumerary" ? "In soprannumero" : "Conta nei 180 CFU"}</span>
+                          {!entry.feeCounted && <span className="text-xs text-success">Frequenza già acquisita</span>}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -363,14 +381,13 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
                         {isPassed && exam.grade && (
                           <span className="font-mono text-sm font-semibold text-success">{exam.grade}/30</span>
                         )}
-                        <button
-                          type="button"
+                        <IconButton
                           onClick={() => setExpandedExam(isExpanded ? null : entry.courseCode)}
-                          className="grid size-7 place-items-center rounded-full border border-border text-muted transition hover:border-border-strong hover:text-primary"
-                          aria-label={isExpanded ? "Chiudi" : "Modifica"}
+                          label={isExpanded ? `Chiudi modifica di ${course.name}` : `Modifica ${course.name}`}
+                          size="md"
                         >
                           {isExpanded ? <ChevronUp className="size-3.5" /> : <Pencil className="size-3.5" />}
-                        </button>
+                        </IconButton>
                       </div>
                     </div>
 
@@ -390,7 +407,7 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
                               <select
                                 value={exam.status}
                                 onChange={(e) => updateStatus(entry.courseCode, e.target.value as ExamStatus)}
-                                className="rounded-xl border border-border bg-surface px-2 py-1 text-xs text-primary outline-none"
+                                className={selectClass("min-h-10 w-auto py-1 text-xs")}
                               >
                                 {(Object.keys(STATUS_LABELS) as ExamStatus[]).map((s) => (
                                   <option key={s} value={s}>{STATUS_LABELS[s]}</option>
@@ -408,7 +425,7 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
                                     type="date"
                                     value={exam.passedAt ?? ""}
                                     onChange={(e) => updateDate(entry.courseCode, "passedAt", e.target.value)}
-                                    className="rounded-xl border border-border bg-surface px-2 py-1 text-xs text-primary outline-none"
+                                    className={inputClass("min-h-10 w-auto py-1 text-xs")}
                                   />
                                 </FieldShell>
                               </>
@@ -419,7 +436,7 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
                                   type="date"
                                   value={exam.registeredAt ?? ""}
                                   onChange={(e) => updateDate(entry.courseCode, "registeredAt", e.target.value)}
-                                  className="rounded-xl border border-border bg-surface px-2 py-1 text-xs text-primary outline-none"
+                                  className={inputClass("min-h-10 w-auto py-1 text-xs")}
                                 />
                               </FieldShell>
                             )}
@@ -429,13 +446,14 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
                                 Segna verbalizzato
                               </Button>
                             )}
-                            <button
-                              type="button"
+                            <IconButton
                               onClick={() => setExpandedExam(null)}
-                              className="ml-auto grid size-7 place-items-center rounded-full text-muted transition hover:text-primary"
+                              label={`Chiudi modifica di ${course.name}`}
+                              size="md"
+                              className="ml-auto border-transparent bg-transparent"
                             >
                               <X className="size-3.5" />
-                            </button>
+                            </IconButton>
                           </div>
                         </motion.div>
                       )}
@@ -475,7 +493,7 @@ function GradeInput({ grade, onChange }: { grade: string | null; onChange: (g: s
       value={grade ?? ""}
       onChange={(e) => onChange(e.target.value)}
       className={cn(
-        "w-20 rounded-xl border border-border bg-surface px-2 py-1 text-xs font-mono text-primary outline-none",
+        selectClass("min-h-10 w-20 py-1 text-xs font-mono"),
         grade ? "border-success/30 text-success" : "text-muted"
       )}
     >

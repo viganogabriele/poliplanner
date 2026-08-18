@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, Info, Search, X } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -16,6 +16,8 @@ import type { StructuralChoice } from "@/lib/polimi/structuralChoice";
 import type { Track } from "@/lib/polimi/constraints";
 import type { CourseYear } from "@/lib/polimi/catalog/types";
 import { cn } from "@/lib/ui";
+import { IconButton } from "@/components/ui/IconButton";
+import { useModalDialog } from "@/components/ui/useModalDialog";
 
 /**
  * Modale "Aggiungi insegnamento".
@@ -77,6 +79,9 @@ export default function AddCourseModal({
   const [bucketFilter, setBucketFilter] = useState<CourseBucket | "all">("all");
   const [semesterFilter, setSemesterFilter] = useState<SemesterFilter>("all");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const titleId = useId();
+  const dialogRef = useModalDialog<HTMLDivElement>(true, onClose, searchRef);
 
   const catalog = useMemo(() => getCatalog(academicYear), [academicYear]);
 
@@ -117,33 +122,40 @@ export default function AddCourseModal({
   }, [visible]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Aggiungi un insegnamento">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 flex max-h-[86vh] w-full max-w-2xl flex-col rounded-panel border border-border bg-background-soft shadow-elevated">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="relative z-10 flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col rounded-panel border border-border bg-background-soft shadow-elevated sm:max-h-[86vh]"
+      >
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div>
-            <h2 className="text-sm font-semibold text-primary">Aggiungi un insegnamento</h2>
+            <h2 id={titleId} className="text-base font-semibold text-primary">Aggiungi un insegnamento</h2>
             <p className="mt-0.5 text-xs text-muted">
               Catalogo AA {catalog.academicYear} · percorso {track} · anno {studentYear}
               {restrictToSemester && ` · solo ${restrictToSemester}° semestre`}
               {catalog.dataStatus === "to_verify" && " · dati da riconfermare"}
             </p>
           </div>
-          <button onClick={onClose} className="rounded-full p-1.5 text-muted transition hover:bg-surface-hover hover:text-primary" aria-label="Chiudi">
+          <IconButton onClick={onClose} label="Chiudi catalogo" size="md" className="border-transparent bg-transparent">
             <X className="size-4" />
-          </button>
+          </IconButton>
         </div>
 
         <div className="space-y-2 border-b border-border px-4 py-3">
           <div className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2">
             <Search className="size-4 shrink-0 text-muted" />
             <input
+              ref={searchRef}
               type="text"
               placeholder="Cerca per nome o codice…"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               className="flex-1 bg-transparent text-sm text-primary outline-none placeholder:text-muted"
-              autoFocus
             />
           </div>
 
@@ -228,12 +240,12 @@ function CourseRow({
 }) {
   return (
     <div className={cn("rounded-xl border transition", expanded ? "border-accent/40 bg-accent/5" : "border-border bg-surface/40")}>
-      <div className="flex items-center gap-2 px-3 py-2.5">
+      <div className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:gap-2">
         <button type="button" onClick={onToggle} aria-expanded={expanded} className="min-w-0 flex-1 text-left">
-          <p className="truncate text-sm font-medium text-primary">{course.name}</p>
-          <p className="truncate text-xs text-muted">{course.code} · {course.summary}</p>
+          <p className="line-clamp-2 text-sm font-medium text-primary" title={course.name}>{course.name}</p>
+          <p className="mt-0.5 line-clamp-2 text-xs text-muted">{course.code} · {course.summary}</p>
         </button>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 sm:justify-end">
           {course.linkedModule && <Badge variant="neutral" className="py-0 text-[10px]">+ progetto</Badge>}
           {course.limitations.length > 0 && (
             <span title="Ci sono limitazioni da leggere" className="text-warning">
@@ -243,14 +255,14 @@ function CourseRow({
           <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold", CATEGORY_COLORS[course.category] ?? "bg-surface text-muted")}>
             {course.category}
           </span>
-          <button
-            type="button"
+          <IconButton
             onClick={onToggle}
-            aria-label={expanded ? "Chiudi dettagli" : "Mostra dettagli"}
-            className="rounded-full p-1 text-muted transition hover:text-primary"
+            label={expanded ? `Chiudi dettagli di ${course.name}` : `Mostra dettagli di ${course.name}`}
+            size="md"
+            className="ml-auto border-transparent bg-transparent sm:ml-0"
           >
             <ChevronDown className={cn("size-4 transition-transform", expanded && "rotate-180")} />
-          </button>
+          </IconButton>
           <Button size="sm" onClick={onAdd}>Aggiungi</Button>
         </div>
       </div>
