@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { BookOpen, CheckCircle2, FlaskConical, GraduationCap, History, Layers3, Save, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import Callout from "@/components/ui/Callout";
 import {
   courseOfferings,
   findCourse,
@@ -364,8 +366,10 @@ export default function PianoClient({
   // ---------------------------------------------------------------- render
 
   return (
-    <div className="flex rounded-panel border border-border bg-background-soft shadow-card xl:min-h-[calc(100vh-10rem)] xl:overflow-hidden">
-      <div className="min-w-0 flex-1 space-y-5 p-4 pb-8 sm:p-5 xl:overflow-y-auto">
+    /* Flusso di pagina normale: prima l'area centrale scorreva dentro un contenitore
+       e la colonna laterale in un altro, con due barre di scorrimento sovrapposte. */
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_19rem]">
+      <div className="min-w-0 space-y-4 sm:space-y-5">
         <PlanHeader
           validation={validation}
           planStatus={scenario.cycle.status}
@@ -379,27 +383,26 @@ export default function PianoClient({
         />
 
         {revisionMode && (
-          <div className="flex items-start gap-3 rounded-xl border border-accent/30 bg-accent/5 px-4 py-3">
-            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-accent" />
-            <p className="text-xs leading-relaxed text-secondary">
-              <strong className="text-primary">Modifica del {editableSemester}° semestre.</strong> Puoi aggiungere o
-              togliere solo insegnamenti del {editableSemester}° semestre di questo anno accademico. Percorso e primo
-              semestre sono bloccati, e un esame superato ma non ancora verbalizzato non può essere autocertificato.
-            </p>
-          </div>
+          <Callout
+            tone="info"
+            icon={<ShieldCheck className="size-4" aria-hidden="true" />}
+            title={`Modifica del ${editableSemester}° semestre`}
+          >
+            Puoi aggiungere o togliere solo insegnamenti del {editableSemester}° semestre di questo anno
+            accademico. Percorso e primo semestre sono bloccati, e un esame superato ma non ancora
+            verbalizzato non può essere autocertificato.
+          </Callout>
         )}
 
         {isHistorical && (
-          <div className="rounded-xl border border-success/30 bg-success/5 px-4 py-3">
-            <p className="text-sm font-semibold text-primary">
-              {scenario.cycle.status === "polimi_compiled" ? "Storico congelato" : "Scenario archiviato"}
-            </p>
-            <p className="mt-0.5 text-xs text-muted">
-              {scenario.cycle.status === "polimi_compiled"
-                ? "Questo piano conta come realmente presentato: da qui si calcolano le frequenze già acquisite. È in sola lettura."
-                : "Disponibile in sola lettura finché non lo ripristini dallo storico."}
-            </p>
-          </div>
+          <Callout
+            tone="success"
+            title={scenario.cycle.status === "polimi_compiled" ? "Storico congelato" : "Scenario archiviato"}
+          >
+            {scenario.cycle.status === "polimi_compiled"
+              ? "Questo piano conta come realmente presentato: da qui si calcolano le frequenze già acquisite. È in sola lettura."
+              : "Disponibile in sola lettura finché non lo ripristini dallo storico."}
+          </Callout>
         )}
 
         <RequiredActionsPanel
@@ -423,71 +426,47 @@ export default function PianoClient({
           onSetPosition={setPosition}
         />
 
-        <button
-          type="button"
-          onClick={() => setDetailsOpen(true)}
-          className={cn(
-            "flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left sm:hidden",
-            buckets.errors.length > 0
-              ? "border-danger/30 bg-danger/5"
-              : buckets.warnings.length > 0
-                ? "border-warning/30 bg-warning/5"
-                : "border-success/30 bg-success/5"
-          )}
-        >
-          <span>
-            <span className="block text-sm font-semibold text-primary">
-              {buckets.errors.length > 0
-                ? `${buckets.errors.length} problemi da risolvere`
-                : buckets.warnings.length > 0
-                  ? `${buckets.warnings.length} avvisi da controllare`
-                  : "Piano in regola per quest'anno"}
-            </span>
-            <span className="mt-0.5 block text-xs text-muted">Apri la verifica completa</span>
-          </span>
-          <CheckCircle2 className={cn("size-5 shrink-0", buckets.errors.length > 0 ? "text-danger" : buckets.warnings.length > 0 ? "text-warning" : "text-success")} />
-        </button>
-
         {!isHistorical && (
-          <div className="rounded-panel border border-border bg-surface/40 p-4">
+          <Card>
             <p className="text-sm font-semibold text-primary">Compilazione del piano</p>
-            <ol className="mt-3 grid gap-2 text-xs sm:grid-cols-3" aria-label="Stato della compilazione">
+            <p className="mt-1 text-sm text-muted">
+              Tre passi: salvi la proposta, la marchi come pronta, poi la copi nei Servizi Online PoliMi.
+            </p>
+            <ol className="mt-4 grid gap-2 text-sm sm:grid-cols-3" aria-label="Stato della compilazione">
               <WorkflowStep number="1" label="Salva la proposta" active={scenario.cycle.status === "draft"} complete={scenario.cycle.id !== null} />
               <WorkflowStep number="2" label="Segna come pronta" active={scenario.cycle.status === "ready"} complete={scenario.cycle.status === "ready" || scenario.cycle.status === "polimi_compiled"} />
               <WorkflowStep number="3" label="Conferma la copia su PoliMi" active={scenario.cycle.status === "polimi_compiled"} complete={scenario.cycle.status === "polimi_compiled"} />
             </ol>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <Button variant="primary" onClick={save} disabled={isPending} className="w-full sm:w-auto">
-                <Save className="size-4" />
+                <Save className="size-4" aria-hidden="true" />
                 {scenario.cycle.id === null ? "Salva piano" : "Salva bozza"}
               </Button>
               <Button variant="secondary" onClick={markReady} disabled={isPending || buckets.errors.length > 0} className="w-full sm:w-auto">
-                <CheckCircle2 className="size-4" />
-                Pronto da compilare
+                <CheckCircle2 className="size-4" aria-hidden="true" />
+                Segna come pronta
               </Button>
               <Button variant="secondary" onClick={markCompiled} disabled={isPending || scenario.cycle.status !== "ready"} className="w-full sm:w-auto">
-                <GraduationCap className="size-4" />
-                Conferma copia su PoliMi
+                <GraduationCap className="size-4" aria-hidden="true" />
+                Ho copiato su PoliMi
               </Button>
             </div>
-          </div>
+            {buckets.errors.length > 0 && (
+              <p className="mt-2 text-xs text-muted">
+                Il secondo passo si sblocca quando non restano problemi da risolvere.
+              </p>
+            )}
+          </Card>
         )}
 
         {feedback && (
-          <div
-            role="status"
-            className={cn(
-              "rounded-xl border px-4 py-3 text-sm",
-              feedback.ok ? "border-success/30 bg-success/5 text-success" : "border-danger/30 bg-danger/5 text-danger"
-            )}
-          >
-            <p className="font-medium">{feedback.text}</p>
+          <Callout role="status" tone={feedback.ok ? "success" : "danger"} title={feedback.text}>
             {feedback.details && feedback.details.length > 0 && (
-              <ul className="mt-1 space-y-0.5 text-xs text-secondary">
+              <ul className="space-y-0.5">
                 {feedback.details.map((detail) => <li key={detail}>· {detail}</li>)}
               </ul>
             )}
-          </div>
+          </Callout>
         )}
 
         <CollapsibleSection
@@ -508,7 +487,7 @@ export default function PianoClient({
             <CollapsibleSection
               title="Carriera"
               description="Cosa risulta davvero in libretto. Solo gli esami verbalizzati chiudono un'attività."
-              badge={<Badge variant="success" className="py-0 text-[10px]">{validation.summary.registeredCareerCfu} CFU</Badge>}
+              badge={<Badge size="sm" variant="success">{validation.summary.registeredCareerCfu} CFU</Badge>}
               open={careerOpen}
               onToggle={() => setCareerOpen((value) => !value)}
             >
@@ -518,7 +497,7 @@ export default function PianoClient({
             <CollapsibleSection
               title="Anteprima anni successivi"
               description="Regole che diventeranno esigibili più avanti."
-              badge={futureCount > 0 ? <Badge variant="neutral" className="py-0 text-[10px]">{futureCount}</Badge> : undefined}
+              badge={futureCount > 0 ? <Badge size="sm" variant="neutral">{futureCount}</Badge> : undefined}
               open={futureOpen}
               onToggle={() => setFutureOpen((value) => !value)}
               tone="muted"
@@ -540,7 +519,7 @@ export default function PianoClient({
             <CollapsibleSection
               title="Scenari salvati e storico"
               description="Consultazione, archiviazione e creazione manuale dei piani."
-              badge={<span className="flex items-center gap-1 text-[10px] text-muted"><History className="size-3.5" />{cycles.length}</span>}
+              badge={<span className="flex items-center gap-1 text-[11px] text-muted"><History className="size-3.5" />{cycles.length}</span>}
               open={historyOpen}
               onToggle={() => setHistoryOpen((value) => !value)}
               tone="muted"
@@ -579,14 +558,14 @@ export default function PianoClient({
         </div>
       </div>
 
-      <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-border bg-background-soft p-4 xl:block">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">
-          Verifica del piano {scenario.cycle.academicYear}
-        </p>
-        <PlanIssuesAside validation={validation} onOpenDetails={() => setDetailsOpen(true)} />
-        <p className="mt-4 rounded-xl border border-border bg-surface/40 p-3 text-[11px] leading-relaxed text-muted">
-          {DISCLAIMER}
-        </p>
+      <aside className="hidden xl:block">
+        <div className="sticky top-6 space-y-3">
+          <h2 className="section-label">Verifica del piano {scenario.cycle.academicYear}</h2>
+          <PlanIssuesAside validation={validation} onOpenDetails={() => setDetailsOpen(true)} />
+          <p className="rounded-card border border-border bg-surface p-3 text-xs leading-relaxed text-muted">
+            {DISCLAIMER}
+          </p>
+        </div>
       </aside>
 
       {catalogOpen && (
@@ -610,16 +589,20 @@ export default function PianoClient({
 function WorkflowStep({ number, label, active, complete }: { number: string; label: string; active: boolean; complete: boolean }) {
   return (
     <li className={cn(
-      "flex items-center gap-2 rounded-xl border px-3 py-2",
-      active ? "border-accent/40 bg-accent/5 text-primary" : complete ? "border-success/25 bg-success/5 text-secondary" : "border-border bg-background-soft/50 text-muted"
+      "flex items-center gap-2.5 rounded-control border px-3 py-2.5",
+      active
+        ? "border-accent/40 bg-accent/5 text-primary"
+        : complete
+          ? "border-success/25 bg-success/5 text-secondary"
+          : "border-border bg-surface-muted/40 text-muted"
     )}>
       <span className={cn(
-        "grid size-6 shrink-0 place-items-center rounded-md font-semibold",
-        active ? "bg-accent text-background" : complete ? "bg-success/15 text-success" : "bg-surface-muted text-muted"
+        "grid size-6 shrink-0 place-items-center rounded-full text-xs font-semibold",
+        active ? "bg-accent text-background" : complete ? "bg-success/15 text-success" : "bg-surface-elevated text-muted"
       )}>
         {complete && !active ? <CheckCircle2 className="size-3.5" aria-hidden="true" /> : number}
       </span>
-      <span>{label}</span>
+      <span className="min-w-0">{label}</span>
     </li>
   );
 }

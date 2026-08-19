@@ -1,13 +1,11 @@
 "use client";
 // ProgressChart — Client Component
 //
-// Renders a Chart.js doughnut chart showing done vs pending lessons.
+// Ciambella Chart.js con lezioni seguite e da seguire. È client perché Chart.js
+// disegna su <canvas>, che nei Server Components non esiste.
 //
-// Why Client? Chart.js needs to draw on a <canvas> element, which
-// is a browser API. Server Components run in Node.js and have no DOM.
-//
-// We use react-chartjs-2, a thin React wrapper around Chart.js.
-// It handles creating and destroying the chart as React re-renders.
+// Il grafico non è l'unica fonte: la legenda sotto riporta le stesse cifre in
+// testo, e un riepilogo per screen reader descrive la ciambella.
 
 import { useReducedMotion } from "motion/react";
 import { Doughnut } from "react-chartjs-2";
@@ -18,15 +16,19 @@ import {
   Legend,
   type ChartOptions,
 } from "chart.js";
+import { BarChart3 } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
 
-// Chart.js requires you to register the components you use.
-// This is a tree-shaking mechanism — you only bundle what you need.
+// Chart.js richiede la registrazione esplicita dei moduli usati: è il suo tree-shaking.
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 interface ProgressChartProps {
   done: number;
   pending: number;
 }
+
+const DONE_COLOR = "#56d7fd";
+const PENDING_COLOR = "#ff6b6b";
 
 export default function ProgressChart({ done, pending }: ProgressChartProps) {
   const reducedMotionPreference = useReducedMotion();
@@ -35,10 +37,11 @@ export default function ProgressChart({ done, pending }: ProgressChartProps) {
 
   if (total === 0) {
     return (
-      <div className="flex h-56 flex-col items-center justify-center rounded-card border border-dashed border-border bg-surface/60 px-5 text-center">
-        <p className="text-sm font-semibold text-primary">Nessun dato sulle lezioni</p>
-        <p className="mt-1 text-xs text-muted">Il grafico apparirà dopo aver configurato il calendario.</p>
-      </div>
+      <EmptyState
+        icon={<BarChart3 className="size-5" aria-hidden="true" />}
+        title="Nessun dato sulle lezioni"
+        description="Il grafico appare dopo aver configurato il calendario."
+      />
     );
   }
 
@@ -49,11 +52,11 @@ export default function ProgressChart({ done, pending }: ProgressChartProps) {
     datasets: [
       {
         data: [done, pending],
-        backgroundColor: ["#56D7FD", "#FF6B6B"],
-        borderColor: "#0A0F14",
-        borderWidth: 4,
-        hoverBackgroundColor: ["#7FE2FF", "#FF8585"],
-        hoverBorderColor: "#101820",
+        backgroundColor: [DONE_COLOR, PENDING_COLOR],
+        borderColor: "#0d141a",
+        borderWidth: 3,
+        hoverBackgroundColor: ["#7fe2ff", "#ff8585"],
+        hoverBorderColor: "#141d24",
         hoverOffset: 4,
       },
     ],
@@ -62,55 +65,62 @@ export default function ProgressChart({ done, pending }: ProgressChartProps) {
   const options: ChartOptions<"doughnut"> = {
     responsive: true,
     maintainAspectRatio: false,
-    cutout: "72%",
-    animation: prefersReduced ? false : { duration: 700, easing: 'easeInOutQuart' as const },
+    cutout: "74%",
+    animation: prefersReduced ? false : { duration: 700, easing: "easeInOutQuart" as const },
     plugins: {
-      legend: {
-        display: false,
-        labels: { color: "#B5B5B5" },
-      },
+      legend: { display: false },
       tooltip: {
         enabled: true,
-        backgroundColor: "#101820",
-        borderColor: "#1B2A31",
+        backgroundColor: "#141d24",
+        borderColor: "#2d454f",
         borderWidth: 1,
-        titleColor: "#7D8A90",
-        bodyColor: "#FCFCFC",
+        titleColor: "#859399",
+        bodyColor: "#f4f7f8",
         displayColors: false,
-        padding: 12,
+        padding: 10,
       },
     },
   };
 
   return (
-    <div>
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
       <p className="sr-only" id="lesson-progress-summary">
         {done} lezioni completate, {pending} lezioni da seguire. Avanzamento {progress}%.
       </p>
-      <div className="relative h-52" aria-describedby="lesson-progress-summary">
+      <div className="relative mx-auto h-40 w-40 shrink-0 sm:mx-0" aria-describedby="lesson-progress-summary">
         <Doughnut
           data={data}
           options={options}
           role="img"
           aria-label={`${done} lezioni completate, ${pending} lezioni da seguire`}
         />
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center" aria-hidden="true">
-          <span className="text-xs font-medium uppercase text-muted">Completate</span>
-          <span className="text-3xl font-semibold tabular-nums text-primary">{progress}%</span>
+        <div
+          className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center"
+          aria-hidden="true"
+        >
+          <span className="text-2xl font-semibold tabular-nums text-primary">{progress}%</span>
+          <span className="text-xs text-muted">completate</span>
         </div>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-sm" aria-hidden="true">
-        <div className="flex items-center gap-2 rounded-lg bg-accent/5 px-3 py-2 text-secondary">
-          <span className="size-2.5 rounded-sm bg-accent" />
-          <span>Seguite</span>
-          <span className="ml-auto font-semibold tabular-nums text-primary">{done}</span>
-        </div>
-        <div className="flex items-center gap-2 rounded-lg bg-danger/5 px-3 py-2 text-secondary">
-          <span className="size-2.5 rounded-sm bg-danger" />
-          <span>Da seguire</span>
-          <span className="ml-auto font-semibold tabular-nums text-primary">{pending}</span>
-        </div>
-      </div>
+
+      <ul className="min-w-0 flex-1 space-y-2" aria-hidden="true">
+        <LegendRow color={DONE_COLOR} label="Seguite" value={done} />
+        <LegendRow color={PENDING_COLOR} label="Da seguire" value={pending} />
+        <LegendRow label="Totale" value={total} />
+      </ul>
     </div>
+  );
+}
+
+function LegendRow({ color, label, value }: { color?: string; label: string; value: number }) {
+  return (
+    <li className="flex items-center gap-2.5 border-b border-border/60 pb-2 text-sm last:border-0 last:pb-0">
+      <span
+        className="size-2.5 shrink-0 rounded-full"
+        style={color ? { backgroundColor: color } : { border: "1px solid #2d454f" }}
+      />
+      <span className="text-muted">{label}</span>
+      <span className="ml-auto font-semibold tabular-nums text-primary">{value}</span>
+    </li>
   );
 }

@@ -4,6 +4,8 @@ import { useMemo, useState, useTransition } from "react";
 import { CheckCircle2, ClipboardPaste, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { inputClass, selectClass } from "@/components/ui/Field";
+import { IconButton } from "@/components/ui/IconButton";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import InfoButton from "@/components/ui/InfoButton";
 import { deleteCareerExamAction, importCareerExamsAction, upsertCareerExamAction } from "@/app/actions";
@@ -82,7 +84,7 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
 
   return (
     <div className="space-y-5">
-      <Card>
+      <Card inset>
         <CardHeader>
           <div>
             <CardTitle>La mia carriera</CardTitle>
@@ -97,12 +99,12 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
           </div>
         </CardHeader>
 
-        <div className="grid gap-2 rounded-xl border border-dashed border-border bg-surface/40 p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto_auto_auto]">
+        <div className="grid gap-2 rounded-control border border-dashed border-border bg-surface-muted/40 p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto_auto_auto]">
           <select
             aria-label="Insegnamento da aggiungere alla carriera"
             value={draft.code}
             onChange={(event) => setDraft((prev) => ({ ...prev, code: event.target.value }))}
-            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none focus:border-accent focus:ring-2 focus:ring-accent/40"
+            className={selectClass()}
           >
             <option value="">Scegli un insegnamento…</option>
             {catalogOptions.map((course) => (
@@ -113,7 +115,7 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
             aria-label="Stato dell'esame"
             value={draft.status}
             onChange={(event) => setDraft((prev) => ({ ...prev, status: event.target.value as ExamStatus }))}
-            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none focus:border-accent focus:ring-2 focus:ring-accent/40"
+            className={selectClass()}
           >
             {(Object.keys(EXAM_STATUS_LABELS) as ExamStatus[]).map((status) => (
               <option key={status} value={status}>{EXAM_STATUS_LABELS[status]}</option>
@@ -124,7 +126,7 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
             value={draft.grade}
             onChange={(event) => setDraft((prev) => ({ ...prev, grade: event.target.value }))}
             disabled={!draft.status.startsWith("passed_")}
-            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none focus:border-accent focus:ring-2 focus:ring-accent/40 disabled:opacity-50"
+            className={selectClass()}
           >
             <option value="">Voto</option>
             {GRADES.map((grade) => <option key={grade} value={grade}>{grade}</option>)}
@@ -135,7 +137,7 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
             value={draft.registeredAt}
             onChange={(event) => setDraft((prev) => ({ ...prev, registeredAt: event.target.value }))}
             disabled={!draft.status.startsWith("passed_")}
-            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary outline-none focus:border-accent focus:ring-2 focus:ring-accent/40 disabled:opacity-50"
+            className={inputClass()}
           />
           <Button variant="primary" onClick={addExam} disabled={isPending}>
             <Plus className="size-4" />
@@ -164,7 +166,7 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
               onChange={(event) => setImportText(event.target.value)}
               rows={6}
               placeholder={"082740; 25; 2025-02-10\n082746; 27; 2025-02-14"}
-              className="w-full rounded-xl border border-border bg-surface px-3 py-2 font-mono text-xs text-primary outline-none focus:border-accent focus:ring-2 focus:ring-accent/40"
+              className={inputClass("py-2 font-mono text-xs")}
             />
             <Button variant="secondary" size="sm" onClick={runImport} disabled={isPending}>
               <CheckCircle2 className="size-4" />
@@ -174,7 +176,7 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
         )}
       </Card>
 
-      <Card>
+      <Card inset>
         <CardHeader>
           <div>
             <CardTitle>Esami registrati ({rows.length})</CardTitle>
@@ -188,9 +190,9 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
         )}
         <div className="space-y-2">
           {rows.map((row) => (
-            <div key={row.courseCode} className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface/40 px-4 py-2.5">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-primary">{row.name}</p>
+            <div key={row.courseCode} className="flex flex-wrap items-center gap-3 rounded-control border border-border bg-surface-muted/40 px-4 py-2.5">
+              <div className="min-w-[11rem] flex-1">
+                <p className="text-sm font-medium leading-snug text-primary">{row.name}</p>
                 <p className="text-xs text-muted">
                   {row.courseCode} · {row.cfu} CFU · anno {row.courseYear} · {row.semester}° semestre
                   {row.isFinalExamModule && " · modulo di prova finale"}
@@ -211,16 +213,16 @@ export default function CareerPanel({ exams, academicYear, track, onChanged }: P
                     Segna verbalizzato
                   </Button>
                 )}
-                <button
-                  type="button"
+                <IconButton
                   onClick={() => run("Voce rimossa dalla carriera.", () => deleteCareerExamAction(row.courseCode))}
                   disabled={isPending}
-                  title={`Rimuovi ${row.name} dalla carriera`}
-                  className="grid size-10 place-items-center rounded-lg text-muted transition hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-                  aria-label={`Rimuovi ${row.name} dalla carriera`}
+                  label={`Rimuovi ${row.name} dalla carriera`}
+                  size="md"
+                  variant="ghost"
+                  className="hover:bg-danger/10 hover:text-danger"
                 >
-                  <Trash2 className="size-4" />
-                </button>
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </IconButton>
               </div>
             </div>
           ))}

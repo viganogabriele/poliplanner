@@ -1,14 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, X } from "lucide-react";
+import { CalendarPlus, Pencil, X } from "lucide-react";
 import InfoButton from "@/components/ui/InfoButton";
 import WeeklyGrid from "@/features/calendar/WeeklyGrid";
 import ScheduleEditor from "@/features/calendar/ScheduleEditor";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import EmptyState from "@/components/ui/EmptyState";
 import type { ScheduleRow } from "@/lib/types";
 
 interface CalendarClientProps {
@@ -27,26 +28,29 @@ export default function CalendarClient({ initialRows }: CalendarClientProps) {
 
   return (
     <div className="space-y-6">
+      {/* Un solo posto per l'azione di modo: la testata. La scheda sotto contiene solo il contenuto. */}
       <PageHeader
         title="Calendario"
         subtitle={isEditing
           ? "Modifica le ricorrenze. Le lezioni già completate restano associate alle date invariate."
-          : "Lezioni ricorrenti distribuite dal lunedì alla domenica."}
-        actions={!isEditing ? (
+          : "Le tue lezioni ricorrenti, giorno per giorno."}
+        actions={isEditing ? (
+          <Button variant="secondary" onClick={requestCloseEditor} className="w-full sm:w-auto">
+            <X className="size-4" aria-hidden="true" />
+            Annulla modifica
+          </Button>
+        ) : (
           <Button variant="secondary" onClick={() => setIsEditing(true)} className="w-full sm:w-auto">
             <Pencil className="size-4" aria-hidden="true" />
             Modifica calendario
           </Button>
-        ) : undefined}
+        )}
       />
       {!isEditing ? (
         <div className="animate-fadeup">
           <Card>
             <CardHeader>
-              <div>
-                <CardTitle>Vista settimanale</CardTitle>
-                <CardDescription>La settimana completa, con weekend separato dai giorni feriali</CardDescription>
-              </div>
+              <CardTitle>Vista settimanale</CardTitle>
               <InfoButton title="Come funziona il calendario">
                 <p>Ogni riga definisce una lezione <strong>ricorrente</strong>: un giorno della settimana, una materia, un intervallo di date e una modalità.</p>
                 <p className="mt-1">Salvando, l&apos;app genera automaticamente tutte le singole occorrenze di lezione.</p>
@@ -55,13 +59,16 @@ export default function CalendarClient({ initialRows }: CalendarClientProps) {
               </InfoButton>
             </CardHeader>
             {initialRows.length === 0 ? (
-              <div className="flex min-h-40 flex-col items-center justify-center rounded-card border border-dashed border-border bg-surface/60 p-6 text-center">
-                <p className="text-sm font-semibold text-primary">Nessuna lezione configurata</p>
-                <p className="mt-1 max-w-sm text-xs text-muted">Aggiungi le ricorrenze settimanali per generare lezioni, arretrati e riepiloghi.</p>
-                <Button variant="primary" onClick={() => setIsEditing(true)} className="mt-4 w-full sm:w-auto">
-                  Configura calendario
-                </Button>
-              </div>
+              <EmptyState
+                icon={<CalendarPlus className="size-5" aria-hidden="true" />}
+                title="Nessuna lezione configurata"
+                description="Aggiungi le ricorrenze settimanali: l'app genera da sole lezioni, arretrati e riepiloghi."
+                action={
+                  <Button variant="primary" size="sm" onClick={() => setIsEditing(true)} className="w-full sm:w-auto">
+                    Configura calendario
+                  </Button>
+                }
+              />
             ) : (
               <WeeklyGrid rows={initialRows} />
             )}
@@ -70,16 +77,6 @@ export default function CalendarClient({ initialRows }: CalendarClientProps) {
       ) : (
         <div className="animate-fadeup">
           <Card elevated>
-            <CardHeader>
-              <div>
-                <CardTitle>Modifica calendario</CardTitle>
-                <CardDescription>Modifica righe, intervalli e modalità senza perdere le lezioni già completate</CardDescription>
-              </div>
-              <Button variant="ghost" size="sm" onClick={requestCloseEditor}>
-                <X className="size-4" />
-                Annulla
-              </Button>
-            </CardHeader>
             <ScheduleEditor
               initialRows={initialRows}
               onDirtyChange={setIsDirty}

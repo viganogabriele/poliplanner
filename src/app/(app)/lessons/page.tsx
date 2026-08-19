@@ -1,7 +1,7 @@
 import { getDashboard } from "@/lib/dashboard";
 import TodoList from "@/features/lessons/TodoList";
 import StatTile from "@/components/ui/StatTile";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { PageShell } from "@/components/ui/PageShell";
 import { PageHeader } from "@/components/ui/PageHeader";
 
@@ -14,7 +14,7 @@ export default function LessonsPage() {
     <PageShell>
       <PageHeader
         title="Lezioni"
-        subtitle="Recupera le attività arretrate e aggiorna la modalità di ogni lezione."
+        subtitle="Spunta le lezioni che hai seguito e aggiorna la modalità quando cambia."
       />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatTile label="Seguite" value={dashboard.done_count} accent="green" />
@@ -28,10 +28,7 @@ export default function LessonsPage() {
 
       <Card>
         <CardHeader>
-          <div>
-            <CardTitle>Lezioni da seguire / segnare</CardTitle>
-            <CardDescription>Attività arretrate e previste per oggi</CardDescription>
-          </div>
+          <CardTitle>Arretrate e di oggi</CardTitle>
         </CardHeader>
         <TodoList items={dashboard.todo_items} configured={dashboard.total_count > 0} />
       </Card>

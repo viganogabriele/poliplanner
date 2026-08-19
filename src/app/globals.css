@@ -1,25 +1,27 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #030303;
-  --color-background-soft: #06090d;
+  /* Superfici: la pagina è più scura delle schede, le schede più scure dei livelli
+     flottanti. È questa scala — non le ombre — a creare la gerarchia. */
+  --color-background: #04070a;
+  --color-background-soft: #080d12;
 
-  --color-surface: #0a0f14;
-  --color-surface-elevated: #101820;
-  --color-surface-muted: #121c22;
-  --color-surface-hover: #16242b;
+  --color-surface: #0d141a;
+  --color-surface-elevated: #141d24;
+  --color-surface-muted: #101920;
+  --color-surface-hover: #182430;
 
-  --color-border: #1b2a31;
-  --color-border-strong: #28414b;
+  --color-border: #1e2b33;
+  --color-border-strong: #2d454f;
 
   --color-accent: #56d7fd;
   --color-accent-soft: #1b7f96;
   --color-accent-muted: #123b46;
 
-  --color-primary: #fcfcfc;
-  --color-secondary: #b5b5b5;
-  --color-muted: #7d8a90;
-  --color-disabled: #4d5a60;
+  --color-primary: #f4f7f8;
+  --color-secondary: #b8c1c6;
+  --color-muted: #859399;
+  --color-disabled: #55636a;
 
   --color-success: #5ee6a8;
   --color-warning: #f2c94c;
@@ -27,19 +29,20 @@
   --color-info: #56d7fd;
   --color-neutral: #8c969b;
 
-  /* Compatibility aliases for any legacy classes left during migration. */
-  --color-panel: #0a0f14;
-  --color-panel2: #121c22;
+  /* Due raggi soli: schede/pannelli e controlli. */
+  --radius-card: 14px;
+  --radius-panel: 14px;
+  --radius-control: 10px;
 
-  --radius-card: 16px;
-  --radius-panel: 20px;
-
-  --shadow-card: 0 12px 40px rgba(0, 0, 0, 0.32);
-  --shadow-elevated: 0 18px 60px rgba(0, 0, 0, 0.48);
+  /* Le ombre servono solo a ciò che galleggia davvero sopra la pagina. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-elevated:
+    0 16px 40px -16px rgba(0, 0, 0, 0.8),
+    0 2px 8px rgba(0, 0, 0, 0.4);
   --shadow-glow:
-    0 0 0 1px rgba(86, 215, 253, 0.24),
-    0 0 28px rgba(86, 215, 253, 0.14);
-  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 0 0 1px rgba(86, 215, 253, 0.18),
+    0 0 20px rgba(86, 215, 253, 0.1);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 
   --font-sans: var(--font-geist-sans), Inter, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -55,23 +58,25 @@ body {
 }
 
 html {
-  background: #030303;
+  background: #04070a;
   color-scheme: dark;
 }
 
 body {
   -webkit-font-smoothing: antialiased;
   background:
-    linear-gradient(180deg, rgba(16, 24, 32, 0.34) 0%, rgba(6, 9, 13, 0.88) 34%, #030303 100%),
-    #030303;
+    radial-gradient(130% 60% at 50% -25%, rgba(86, 215, 253, 0.07), transparent 62%),
+    #04070a;
+  background-attachment: fixed;
   min-height: 100vh;
-  color: #fcfcfc;
+  color: #f4f7f8;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-  overflow-wrap: anywhere;
+  /* `anywhere` spezzava le parole anche quando non serviva: qui si rompe solo l'indispensabile. */
+  overflow-wrap: break-word;
 }
 
 * {
-  border-color: #1b2a31;
+  border-color: #1e2b33;
 }
 
 button,
@@ -103,7 +108,14 @@ input[type="date"] {
 
 .progress-fill {
   background: linear-gradient(90deg, #56d7fd, #5ee6a8);
-  box-shadow: 0 0 18px rgba(86, 215, 253, 0.16);
+}
+
+/* Etichetta di sezione: un solo stile per tutte le micro-intestazioni della UI. */
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #859399;
 }
 
 .numeric {

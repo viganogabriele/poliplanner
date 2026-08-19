@@ -8,10 +8,12 @@ import { cn } from "@/lib/ui";
 interface InfoButtonProps {
   title: string;
   children: ReactNode;
+  /** `sm` per l'uso in linea accanto a testo piccolo, `md` per le intestazioni. */
+  size?: "sm" | "md";
   className?: string;
 }
 
-export default function InfoButton({ title, children, className }: InfoButtonProps) {
+export default function InfoButton({ title, children, size = "md", className }: InfoButtonProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -78,9 +80,12 @@ export default function InfoButton({ title, children, className }: InfoButtonPro
         aria-expanded={open}
         aria-controls={popoverId}
         title={`Informazioni: ${title}`}
-        className="grid size-10 place-items-center rounded-lg text-muted transition hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+        className={cn(
+          "grid shrink-0 place-items-center rounded-control text-muted transition hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+          size === "sm" ? "size-7" : "size-10"
+        )}
       >
-        <Info className="size-3.5" aria-hidden="true" />
+        <Info className={size === "sm" ? "size-3.5" : "size-4"} aria-hidden="true" />
       </button>
 
       {open && createPortal(
@@ -91,9 +96,9 @@ export default function InfoButton({ title, children, className }: InfoButtonPro
           aria-labelledby={titleId}
           tabIndex={-1}
           style={{ left: position.left, top: position.top, width: "min(20rem, calc(100vw - 2rem))" }}
-          className="fixed z-[70] max-h-[min(24rem,calc(100vh-2rem))] overflow-y-auto rounded-xl border border-border bg-surface-elevated p-4 shadow-elevated focus:outline-none"
+          className="fixed z-[70] max-h-[min(24rem,calc(100vh-2rem))] overflow-y-auto rounded-card border border-border-strong bg-surface-elevated p-4 shadow-elevated focus:outline-none"
         >
-          <p id={titleId} className="mb-2 text-xs font-semibold uppercase tracking-wide text-accent">{title}</p>
+          <p id={titleId} className="mb-2 text-xs font-semibold text-accent">{title}</p>
           <div className="space-y-1.5 text-xs leading-relaxed text-secondary">{children}</div>
         </div>,
         document.body

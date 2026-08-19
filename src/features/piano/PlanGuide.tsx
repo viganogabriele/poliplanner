@@ -29,7 +29,7 @@ export default function PlanGuide({ onClose }: { onClose: () => void }) {
         </CardHeader>
         <div className="grid gap-3 md:grid-cols-2">
           {PIANO_GUIDE_SECTIONS.map((section) => (
-            <section key={section.title} className="rounded-xl border border-border bg-surface/60 p-4">
+            <section key={section.title} className="rounded-control border border-border bg-surface-muted/50 p-4">
               <h3 className="text-sm font-semibold text-primary">{section.title}</h3>
               <p className="mt-1 text-sm leading-relaxed text-secondary">{section.content}</p>
             </section>

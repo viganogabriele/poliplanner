@@ -1,8 +1,7 @@
 "use client";
 
-import { CalendarClock, Lock, RotateCcw, Trash2 } from "lucide-react";
+import { Lock, RotateCcw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import InfoButton from "@/components/ui/InfoButton";
 import { activityCategory, findCourse, groupLabel, type Catalog } from "@/lib/polimi/catalog";
@@ -69,18 +68,18 @@ export default function ProposedPlanPanel({
       <Card>
         <CardHeader>
           <div>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarClock className="size-4 text-accent" />
-              Piano proposto {catalog.academicYear}
-            </CardTitle>
+            <CardTitle>Piano proposto {catalog.academicYear}</CardTitle>
+            {/* Il totale CFU del piano sta nella testata: qui il conteggio e i subtotali per semestre. */}
             <CardDescription>
-              {effective.length} attività effettive · {summary.effectiveCfu} CFU. Prima i reinserimenti,
-              poi le nuove frequenze: solo queste ultime contano per la contribuzione.
+              {effective.length} attività effettive. Prima i reinserimenti, poi le nuove frequenze:
+              solo queste ultime contano per la contribuzione.
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-sm text-accent">{summary.newFrequencyCfu} CFU nuovi</span>
-            <InfoButton title="Limiti di CFU dell'anno">
+          <div className="flex shrink-0 items-center gap-1">
+            <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-accent">
+              {summary.newFrequencyCfu} <span className="text-xs font-medium text-muted">CFU nuovi</span>
+            </span>
+            <InfoButton size="sm" title="Limiti di CFU dell'anno">
               <p>Intervallo ordinario di presentazione: {catalog.annual.cfuRange[0]}–{catalog.annual.cfuRange[1]} CFU di nuova frequenza.</p>
               <p>{catalog.annual.sources.cfuRange.source}</p>
               {catalog.annual.reinsertionsCountTowardRange === null && (
@@ -100,14 +99,14 @@ export default function ProposedPlanPanel({
           return (
             <section key={semester} className="mb-4 last:mb-0">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+                <h3 className="section-label flex items-center gap-1.5">
                   {semester}° semestre
-                  {locked && <Lock className="size-3" />}
-                </p>
-                <span className="text-xs text-muted">{cfu} CFU</span>
+                  {locked && <Lock className="size-3" aria-hidden="true" />}
+                </h3>
+                <span className="text-xs tabular-nums text-muted">{cfu} CFU</span>
               </div>
               {locked && (
-                <p className="mb-2 rounded-lg border border-border bg-surface/40 px-3 py-2 text-xs text-muted">
+                <p className="mb-2 rounded-control border border-border bg-surface-muted/40 px-3 py-2 text-xs text-muted">
                   Nella modifica del secondo semestre gli insegnamenti del {semester}° semestre non si possono
                   aggiungere né togliere, nemmeno se hai superato l&apos;esame nel frattempo.
                 </p>
@@ -126,11 +125,11 @@ export default function ProposedPlanPanel({
         })}
 
         <div className="mt-4 border-t border-border pt-3">
-          <p className="text-xs font-semibold text-secondary">Categorie</p>
+          <h3 className="section-label">Categorie delle attività</h3>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-2">
             {Object.entries(CATEGORY_LABELS).map(([code, label]) => (
-              <span key={code} className="inline-flex items-center gap-1.5 text-[11px] text-muted">
-                <span className={cn("rounded px-1.5 py-0.5 font-bold", CATEGORY_COLORS[code] ?? "bg-surface text-muted")}>{code}</span>
+              <span key={code} className="inline-flex items-center gap-1.5 text-xs text-muted">
+                <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-bold", CATEGORY_COLORS[code] ?? "bg-surface-muted text-muted")}>{code}</span>
                 {label}
               </span>
             ))}
@@ -148,7 +147,7 @@ export default function ProposedPlanPanel({
                 su tutto il corso.
               </CardDescription>
             </div>
-            <span className="text-xs text-muted">{summary.supernumeraryCfu} CFU</span>
+            <span className="shrink-0 text-xs tabular-nums text-muted">{summary.supernumeraryCfu} CFU</span>
           </CardHeader>
           <EntryRows
             entries={sections.supernumerary}
@@ -183,7 +182,7 @@ function EntryRows({
   onSetPosition: (code: string, position: EntryPosition) => void;
 }) {
   if (entries.length === 0) {
-    return <p className="py-2 text-center text-xs text-muted">Nessun insegnamento in questo semestre.</p>;
+    return <p className="py-2 text-sm text-muted">Nessun insegnamento in questo semestre.</p>;
   }
 
   return (
@@ -201,36 +200,36 @@ function EntryRows({
           <div
             key={entry.courseCode}
             className={cn(
-              "flex flex-wrap items-center gap-3 rounded-xl border px-4 py-2.5",
-              reinserted ? "border-warning/30 bg-warning/5" : "border-border bg-surface/40"
+              "flex flex-wrap items-center gap-3 rounded-control border px-3 py-2.5 transition",
+              reinserted ? "border-warning/30 bg-warning/5" : "border-border bg-surface-muted/40 hover:border-border-strong"
             )}
           >
-            <div className="min-w-0 flex-1">
-              <p className="line-clamp-2 text-sm font-medium text-primary" title={course?.name ?? entry.externalName ?? entry.courseCode}>
+            <div className="min-w-[11rem] flex-1">
+              <p className="text-sm font-medium leading-snug text-primary" title={course?.name ?? entry.externalName ?? entry.courseCode}>
                 {course?.name ?? entry.externalName ?? entry.courseCode}
               </p>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
                 <span>{course?.cfu ?? entry.externalCfu ?? 0} CFU</span>
                 <span
-                  className={cn("rounded px-1 py-0.5 text-[10px] font-bold", CATEGORY_COLORS[category] ?? "")}
+                  className={cn("rounded px-1 py-0.5 text-[11px] font-bold", CATEGORY_COLORS[category] ?? "")}
                   title={CATEGORY_LABELS[category]}
                 >
                   {category}
                 </span>
                 {group && <span>{group}</span>}
                 {reinserted && (
-                  <Badge variant="warning" className="gap-1 py-0 text-[10px]">
-                    <RotateCcw className="size-3" />
+                  <Badge size="sm" variant="warning">
+                    <RotateCcw className="size-3" aria-hidden="true" />
                     Frequenza già acquisita
                   </Badge>
                 )}
                 {entry.entryKind === "external" && (
-                  <Badge variant="warning" className="py-0 text-[10px]">Fuori tabella</Badge>
+                  <Badge size="sm" variant="warning">Fuori tabella</Badge>
                 )}
                 {status && status !== "planned" && (
                   <Badge
+                    size="sm"
                     variant={status === "passed_registered" ? "success" : status === "passed_unregistered" ? "warning" : "neutral"}
-                    className="py-0 text-[10px]"
                   >
                     {EXAM_STATUS_LABELS[status]}
                   </Badge>
@@ -238,23 +237,23 @@ function EntryRows({
               </div>
             </div>
             {editable && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
                   onClick={() => onSetPosition(entry.courseCode, entry.position === "effective" ? "supernumerary" : "effective")}
+                  className="min-h-8 rounded-control px-1.5 text-xs text-muted underline decoration-border underline-offset-4 transition hover:text-primary hover:decoration-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
                 >
                   {entry.position === "effective" ? "Sposta in soprannumero" : "Conta nei 180 CFU"}
-                </Button>
+                </button>
                 <IconButton
                   onClick={() => onRemove(entry.courseCode)}
                   label={`Rimuovi ${course?.name ?? entry.courseCode}`}
                   size="md"
                   className="border-transparent bg-transparent hover:bg-danger/10 hover:text-danger"
                 >
-                  <Trash2 className="size-4" />
+                  <Trash2 className="size-4" aria-hidden="true" />
                 </IconButton>
-              </>
+              </div>
             )}
             {!editable && <Lock className="size-3.5 shrink-0 text-muted" aria-label="Non modificabile" />}
           </div>

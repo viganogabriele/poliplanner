@@ -43,8 +43,14 @@ type Props = {
 
 export default function PlanIssuesAside({ validation, onOpenDetails }: Props) {
   const { errors, warnings, advice, hiddenCount } = bucketIssues(validation);
+  const isClean = errors.length === 0 && warnings.length === 0 && advice.length === 0;
   return (
     <div className="space-y-3">
+      {isClean && (
+        <p className="rounded-card border border-success/25 bg-success/5 px-3 py-2.5 text-sm text-secondary">
+          Nessuna segnalazione sul piano corrente.
+        </p>
+      )}
       <IssueGroup
         title={errors.length === 1 ? "1 problema da risolvere" : `${errors.length} problemi da risolvere`}
         tone="text-danger"
@@ -64,10 +70,10 @@ export default function PlanIssuesAside({ validation, onOpenDetails }: Props) {
       <button
         type="button"
         onClick={onOpenDetails}
-        className="w-full rounded-xl border border-border bg-surface/40 px-3 py-2 text-left text-xs text-secondary transition hover:border-border-strong hover:text-primary"
+        className="flex min-h-11 w-full items-center justify-between gap-2 rounded-control border border-border bg-surface px-3 text-left text-sm text-secondary transition hover:border-border-strong hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
       >
-        Vedi tutti i dettagli della verifica
-        {hiddenCount > 0 && <span className="text-muted"> · altre {hiddenCount} voci</span>}
+        <span>Vedi tutti i dettagli</span>
+        {hiddenCount > 0 && <span className="shrink-0 text-xs text-muted">altre {hiddenCount}</span>}
       </button>
     </div>
   );
@@ -77,9 +83,9 @@ function IssueGroup({ title, tone, issues }: { title: string; tone: string; issu
   if (issues.length === 0) return null;
   return (
     <section className="space-y-2">
-      <p className={`text-xs font-semibold uppercase tracking-wide ${tone}`}>{title}</p>
+      <h3 className={`text-xs font-semibold ${tone}`}>{title}</h3>
       {issues.map((issue) => (
-        <div key={issue.id} className={`rounded-xl border p-3 text-xs leading-snug ${SEVERITY_BORDERS[issue.type]}`}>
+        <div key={issue.id} className={`rounded-control border p-3 text-xs leading-snug ${SEVERITY_BORDERS[issue.type]}`}>
           <div className="flex gap-2">
             {SEVERITY_ICONS[issue.type]}
             <div className="min-w-0 space-y-1">

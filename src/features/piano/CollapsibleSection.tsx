@@ -27,26 +27,28 @@ export default function CollapsibleSection({
   return (
     <section
       className={cn(
-        "rounded-panel border p-4",
-        tone === "muted" ? "border-border/70 bg-surface/20" : "border-border bg-surface/40"
+        "rounded-card border",
+        tone === "muted" ? "border-border bg-surface-muted/30" : "border-border bg-surface"
       )}
     >
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 text-left"
+        className="flex w-full items-center justify-between gap-3 rounded-card p-4 text-left transition hover:bg-surface-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50"
       >
         <span className="min-w-0">
           <span className="block text-sm font-semibold text-primary">{title}</span>
-          {description && <span className="mt-0.5 block text-xs text-muted">{description}</span>}
+          {description && <span className="mt-0.5 block text-xs leading-relaxed text-muted">{description}</span>}
         </span>
         <span className="flex shrink-0 items-center gap-2">
           {badge}
-          <ChevronDown className={cn("size-4 text-muted transition-transform", open && "rotate-180")} />
+          <ChevronDown className={cn("size-4 text-muted transition-transform", open && "rotate-180")} aria-hidden="true" />
         </span>
       </button>
-      {open && <div className="animate-panel-open mt-4 border-t border-border pt-4">{children}</div>}
+      {open && (
+        <div className="animate-panel-open border-t border-border p-4">{children}</div>
+      )}
     </section>
   );
 }

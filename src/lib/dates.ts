@@ -88,12 +88,20 @@ export function formatItalianDate(value: string, style: ItalianDateStyle = "shor
   return ITALIAN_DATE_FORMATTERS[style].format(parseISODate(value));
 }
 
+const ITALIAN_DAY_MONTH = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", timeZone: "UTC" });
+
+/**
+ * Intervallo di date. Composto a mano invece che con `formatRange`: quello inserisce
+ * separatori che cambiano fra la versione di ICU di Node e quella del browser, e la
+ * differenza faceva fallire l'hydration della vista settimanale.
+ *
+ * L'anno compare una volta sola quando inizio e fine cadono nello stesso anno.
+ */
 export function formatItalianDateRange(start: string, end: string): string {
   if (!isISODate(start) || !isISODate(end)) return `${start} - ${end}`;
-  return new Intl.DateTimeFormat("it-IT", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  }).formatRange(parseISODate(start), parseISODate(end));
+  const from = parseISODate(start);
+  const to = parseISODate(end);
+  const sameYear = from.getUTCFullYear() === to.getUTCFullYear();
+  const left = sameYear ? ITALIAN_DAY_MONTH.format(from) : ITALIAN_DATE_FORMATTERS.short.format(from);
+  return `${left} – ${ITALIAN_DATE_FORMATTERS.short.format(to)}`;
 }

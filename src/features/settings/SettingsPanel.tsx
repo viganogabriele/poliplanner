@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { AlertCircle, CheckCircle2, Database, HardDrive, RotateCcw, ShieldCheck, Smartphone } from "lucide-react";
+import { Database, RotateCcw, ShieldCheck, Smartphone } from "lucide-react";
 import { resetDatabaseAction, seedDatabaseAction } from "@/app/actions";
 import { Button } from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import PwaInstallButton from "@/components/ui/PwaInstallButton";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import Callout from "@/components/ui/Callout";
 
 export default function SettingsPanel() {
   const [isPending, startTransition] = useTransition();
@@ -30,47 +31,38 @@ export default function SettingsPanel() {
   return (
     <div className="space-y-5">
       {message && (
-        <div
-          className={`flex items-center gap-2 rounded-card border px-4 py-3 text-sm font-medium ${
-            message.ok
-              ? "border-success/30 bg-success/10 text-success"
-              : "border-danger/30 bg-danger/10 text-danger"
-          }`}
-          role="status"
-        >
-          {message.ok ? (
-            <CheckCircle2 className="size-4" aria-hidden="true" />
-          ) : (
-            <AlertCircle className="size-4" aria-hidden="true" />
-          )}
+        <Callout role="status" tone={message.ok ? "success" : "danger"}>
           {message.text}
-        </div>
+        </Callout>
       )}
 
       <Card>
         <CardHeader>
-          <div className="flex items-start gap-3">
-            <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent"><HardDrive className="size-5" aria-hidden="true" /></span>
-            <div>
-              <CardTitle>Dati locali</CardTitle>
-              <CardDescription>Questa istanza non ha utenti. I dati restano nel database SQLite locale.</CardDescription>
-            </div>
+          <div>
+            <CardTitle>Dati locali</CardTitle>
+            <CardDescription>
+              Questa istanza non ha utenti: i dati restano nel database SQLite di questa macchina.
+            </CardDescription>
           </div>
         </CardHeader>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-xl border border-border bg-surface-muted/60 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+          <div className="rounded-control border border-border bg-surface-muted/40 p-4">
+            <p className="flex items-center gap-2 text-sm font-medium text-primary">
               <ShieldCheck className="size-4 text-success" aria-hidden="true" />
               Istanza privata
-            </div>
-            <p className="mt-1 text-xs leading-relaxed text-muted">Se pubblichi l&apos;app, proteggila con autenticazione tramite reverse proxy.</p>
+            </p>
+            <p className="mt-1 text-sm leading-relaxed text-muted">
+              Se pubblichi l&apos;app, proteggila con autenticazione tramite reverse proxy.
+            </p>
           </div>
-          <div className="rounded-xl border border-border bg-surface-muted/60 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+          <div className="rounded-control border border-border bg-surface-muted/40 p-4">
+            <p className="flex items-center gap-2 text-sm font-medium text-primary">
               <Smartphone className="size-4 text-accent" aria-hidden="true" />
               App sul dispositivo
-            </div>
-            <p className="mt-1 mb-3 text-xs leading-relaxed text-muted">Quando il browser lo consente, puoi installare Poliplanner dalla schermata Home.</p>
+            </p>
+            <p className="mt-1 mb-3 text-sm leading-relaxed text-muted">
+              Quando il browser lo consente, puoi installare Poliplanner sulla schermata Home.
+            </p>
             <PwaInstallButton />
           </div>
         </div>
@@ -78,13 +70,13 @@ export default function SettingsPanel() {
 
       <Card>
         <CardHeader>
-          <div>
-            <CardTitle>Dati di esempio</CardTitle>
-            <CardDescription>Carica un calendario dimostrativo per esplorare l&apos;app.</CardDescription>
-          </div>
+          <CardTitle>Dati di esempio</CardTitle>
         </CardHeader>
         <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="max-w-2xl text-sm leading-relaxed text-secondary">Questa operazione sostituisce calendario, lezioni, esami, piani e avanzamento attuali con dati di esempio.</p>
+          <p className="max-w-2xl text-sm leading-relaxed text-muted">
+            Carica un calendario dimostrativo per esplorare l&apos;app: sostituisce calendario, lezioni,
+            esami, piani e avanzamento attuali.
+          </p>
           <Button
             type="button"
             variant="primary"
@@ -92,20 +84,20 @@ export default function SettingsPanel() {
             disabled={isPending}
           >
             <Database className="size-4" aria-hidden="true" />
-            {isPending ? "Attendere..." : "Carica dati di esempio"}
+            {isPending ? "Attendere…" : "Carica dati di esempio"}
           </Button>
         </div>
       </Card>
 
       <Card className="border-danger/30">
         <CardHeader>
-          <div>
-            <CardTitle>Azioni pericolose</CardTitle>
-            <CardDescription>Il ripristino elimina tutti i dati e non può essere annullato.</CardDescription>
-          </div>
+          <CardTitle>Azioni pericolose</CardTitle>
         </CardHeader>
         <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="max-w-2xl text-sm leading-relaxed text-secondary">Elimina calendario, occorrenze delle lezioni, completamenti, esami, carriera, piani di studio, scenari e impostazioni.</p>
+          <p className="max-w-2xl text-sm leading-relaxed text-muted">
+            Elimina calendario, occorrenze delle lezioni, completamenti, esami, carriera, piani di studio,
+            scenari e impostazioni. Non si può annullare.
+          </p>
           <Button
             type="button"
             variant="danger"
@@ -113,7 +105,7 @@ export default function SettingsPanel() {
             disabled={isPending}
           >
             <RotateCcw className="size-4" aria-hidden="true" />
-            {isPending ? "Attendere..." : "Elimina tutti i dati"}
+            {isPending ? "Attendere…" : "Elimina tutti i dati"}
           </Button>
         </div>
       </Card>

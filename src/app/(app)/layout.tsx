@@ -8,7 +8,7 @@ export default function AppLayout({
   return (
     <div className="flex min-h-screen">
       <AppNav />
-      <main className="min-w-0 flex-1 overflow-x-clip pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-16 lg:pb-0 lg:pt-0">
+      <main className="min-w-0 flex-1 overflow-x-clip pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-14 lg:pb-0 lg:pt-0">
         {children}
       </main>
     </div>

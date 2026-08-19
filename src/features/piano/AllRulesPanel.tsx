@@ -47,7 +47,7 @@ type Props = {
 
 export default function AllRulesPanel({ catalog, validation, onClose }: Props) {
   return (
-    <section className="rounded-panel border border-border bg-surface/40 p-4">
+    <section className="rounded-card border border-border bg-surface p-4 sm:p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-primary">Tutti i dettagli della verifica</h2>
@@ -68,8 +68,8 @@ export default function AllRulesPanel({ catalog, validation, onClose }: Props) {
           if (issues.length === 0) return null;
           return (
             <div key={scope}>
-              <p className="text-xs font-semibold uppercase tracking-wide text-secondary">{SCOPE_TITLES[scope].title}</p>
-              <p className="mb-2 text-xs text-muted">{SCOPE_TITLES[scope].hint}</p>
+              <h3 className="text-sm font-semibold text-primary">{SCOPE_TITLES[scope].title}</h3>
+              <p className="mb-2 mt-0.5 text-xs leading-relaxed text-muted">{SCOPE_TITLES[scope].hint}</p>
               <div className="space-y-2">
                 {issues.map((issue) => <IssueRow key={issue.id} issue={issue} />)}
               </div>
@@ -78,10 +78,10 @@ export default function AllRulesPanel({ catalog, validation, onClose }: Props) {
         })}
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-secondary">Fonti del catalogo</p>
+          <h3 className="text-sm font-semibold text-primary">Fonti del catalogo</h3>
           <ul className="mt-2 space-y-2">
             {catalog.sources.map((source) => (
-              <li key={source.label} className="rounded-xl border border-border bg-surface/40 p-3 text-xs">
+              <li key={source.label} className="rounded-control border border-border bg-surface-muted/40 p-3 text-xs">
                 <p className="font-medium text-primary">{source.label}</p>
                 <p className="mt-0.5 text-muted">
                   {CATALOG_SOURCE_KIND_LABELS[source.kind]}
@@ -105,7 +105,7 @@ export default function AllRulesPanel({ catalog, validation, onClose }: Props) {
 
         {catalog.dataNotes.length > 0 && (
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-secondary">Note sui dati dell&apos;anno</p>
+            <h3 className="text-sm font-semibold text-primary">Note sui dati dell&apos;anno</h3>
             <ul className="mt-2 space-y-1.5">
               {catalog.dataNotes.map((note) => (
                 <li key={note} className="text-xs leading-relaxed text-muted">· {note}</li>
@@ -122,7 +122,7 @@ export default function AllRulesPanel({ catalog, validation, onClose }: Props) {
 
 function IssueRow({ issue }: { issue: ValidationIssue }) {
   return (
-    <div className={`rounded-xl border p-3 text-xs leading-snug ${SEVERITY_BORDERS[issue.type]}`}>
+    <div className={`rounded-control border p-3 text-xs leading-snug ${SEVERITY_BORDERS[issue.type]}`}>
       <div className="flex gap-2">
         {SEVERITY_ICONS[issue.type]}
         <div className="min-w-0 space-y-1">
@@ -130,13 +130,13 @@ function IssueRow({ issue }: { issue: ValidationIssue }) {
             <p className="font-semibold text-primary">{issue.category}</p>
             <ProvenanceChip provenance={issue.provenance} />
             {!issue.dueNow && issue.dueByYear && (
-              <span className="rounded-full border border-border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted">
+              <span className="rounded-full border border-border px-1.5 py-0.5 text-[11px] font-semibold text-muted">
                 dall&apos;anno {issue.dueByYear}
               </span>
             )}
           </div>
           {issue.message && <p className="text-secondary">{issue.message}</p>}
-          {issue.source && <p className="text-[10px] text-muted">Regola applicata: {issue.source}</p>}
+          {issue.source && <p className="text-[11px] text-muted">Regola applicata: {issue.source}</p>}
         </div>
       </div>
     </div>

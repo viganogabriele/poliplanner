@@ -39,78 +39,89 @@ export default function MateriePage({ params }: { params: Promise<{ subject: str
 
   return (
     <PageShell>
-      <nav aria-label="Percorso" className="text-sm text-muted">
-        <Link href="/materie" className="inline-flex min-h-11 items-center gap-2 rounded-lg pr-3 font-semibold text-secondary transition hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+      <nav aria-label="Percorso">
+        <Link
+          href="/materie"
+          className="inline-flex min-h-10 items-center gap-2 rounded-control pr-3 text-sm font-medium text-secondary transition hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+        >
           <ArrowLeft className="size-4" aria-hidden="true" />
-          Torna alle materie
+          Materie
         </Link>
       </nav>
-      <PageHeader
-        title={data.subjectName}
-        subtitle={`${data.doneCount} di ${data.totalCount} lezioni completate`}
-        eyebrow="Materia"
-      />
 
-      {/* Progress bar */}
-      <div className="rounded-card border border-border bg-surface p-4">
-        <div className="mb-2 flex items-center justify-between text-xs text-muted">
-          <span>Avanzamento</span>
-          <span className="font-semibold tabular-nums text-accent">{data.progressPercent}%</span>
-        </div>
-        <div className="h-2.5 overflow-hidden rounded-full bg-background-soft">
-          <div
-            className="h-full rounded-full progress-fill transition-all"
-            style={{ width: `${data.progressPercent}%` }}
-          />
-        </div>
-        <div className="mt-2 flex gap-4 text-xs text-muted">
-          <span><span className="font-semibold text-success">{data.doneCount}</span> seguite</span>
-          <span><span className="font-semibold text-danger">{data.backlog.length}</span> arretrate</span>
-          <span><span className="font-semibold text-secondary">{data.toWatch.length}</span> da guardare</span>
-        </div>
-      </div>
+      <PageHeader title={data.subjectName} />
 
-      {/* Related exam */}
+      {/* Avanzamento: unico posto in cui compaiono i conteggi della materia. */}
       <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Esame collegato</CardTitle>
-              <CardDescription>
-                {data.relatedCourse ? `${data.relatedCourse.name} · ${data.relatedCourse.cfu} CFU` : "Nessuna associazione verificata con il catalogo"}
-              </CardDescription>
-            </div>
-            {data.relatedCourse && (
-              <Link
-                href="/esami"
-                className="flex min-h-10 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-secondary transition hover:border-border-strong hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-              >
-                Vai agli esami
-                <ArrowRight className="size-3.5" aria-hidden="true" />
-              </Link>
-            )}
-          </CardHeader>
-          {!data.relatedCourse ? (
-            <p className="text-sm text-muted">Nessun esame collegato. Controlla il codice corso nel Calendario.</p>
-          ) : data.examRecord ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge variant={STATUS_VARIANT[data.examRecord.status] ?? "neutral"}>
-                {STATUS_LABELS[data.examRecord.status] ?? data.examRecord.status}
-              </Badge>
-              {data.examRecord.grade && (
-                <span className="font-mono text-sm font-semibold text-success">
-                  Voto: {data.examRecord.grade}
-                </span>
-              )}
-              {data.examRecord.passedAt && (
-                <span className="text-xs text-muted">Superato: {formatItalianDate(data.examRecord.passedAt)}</span>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted">Nessun dato esame disponibile.</p>
-          )}
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-sm text-muted">Avanzamento</p>
+          <p className="text-2xl font-semibold tabular-nums text-primary">{data.progressPercent}%</p>
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-background-soft">
+          <div className="progress-fill h-full rounded-full" style={{ width: `${data.progressPercent}%` }} />
+        </div>
+        <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+          <div className="flex items-baseline gap-1.5">
+            <dd className="font-semibold tabular-nums text-success">{data.doneCount}</dd>
+            <dt className="text-xs text-muted">seguite</dt>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <dd className="font-semibold tabular-nums text-danger">{data.backlog.length}</dd>
+            <dt className="text-xs text-muted">arretrate</dt>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <dd className="font-semibold tabular-nums text-secondary">{data.toWatch.length}</dd>
+            <dt className="text-xs text-muted">da guardare</dt>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <dd className="font-semibold tabular-nums text-secondary">{data.totalCount}</dd>
+            <dt className="text-xs text-muted">in totale</dt>
+          </div>
+        </dl>
       </Card>
 
-      {/* Backlog */}
+      <Card>
+        <CardHeader>
+          <div className="min-w-0">
+            <CardTitle>Esame collegato</CardTitle>
+            {/* Senza corso collegato il messaggio sta una volta sola, nel corpo della scheda. */}
+            {data.relatedCourse && (
+              <CardDescription>{data.relatedCourse.name} · {data.relatedCourse.cfu} CFU</CardDescription>
+            )}
+          </div>
+          {data.relatedCourse && (
+            <Link
+              href="/esami"
+              className="flex min-h-10 shrink-0 items-center gap-1.5 rounded-control border border-border px-3 text-sm font-medium text-secondary transition hover:border-border-strong hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+            >
+              Vai agli esami
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+          )}
+        </CardHeader>
+        {!data.relatedCourse ? (
+          <p className="text-sm text-muted">
+            Nessun esame collegato. Controlla il codice corso nel Calendario.
+          </p>
+        ) : data.examRecord ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge variant={STATUS_VARIANT[data.examRecord.status] ?? "neutral"}>
+              {STATUS_LABELS[data.examRecord.status] ?? data.examRecord.status}
+            </Badge>
+            {data.examRecord.grade && (
+              <span className="font-mono text-sm font-semibold text-success">{data.examRecord.grade}/30</span>
+            )}
+            {data.examRecord.passedAt && (
+              <span className="text-xs text-muted">
+                superato il {formatItalianDate(data.examRecord.passedAt)}
+              </span>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted">Nessun dato esame disponibile.</p>
+        )}
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Da recuperare</CardTitle>
@@ -121,25 +132,34 @@ export default function MateriePage({ params }: { params: Promise<{ subject: str
         <SubjectTodoList items={data.backlog} />
       </Card>
 
-      {data.toWatch.length > 0 && <Card>
-        <CardHeader>
-          <CardTitle>Lezioni da guardare</CardTitle>
-          <span className="text-xs text-muted">{data.toWatch.length} registrazioni future</span>
-        </CardHeader>
-          <ul className="flex flex-col gap-2">
+      {data.toWatch.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Lezioni da guardare</CardTitle>
+            <span className="shrink-0 text-xs text-muted">{data.toWatch.length} registrazioni future</span>
+          </CardHeader>
+          <ul className="space-y-2">
             {data.toWatch.map((lesson) => (
-              <li key={lesson.id} className="flex items-center gap-3 rounded-card border border-border bg-surface-muted/60 px-4 py-2.5">
-                <div className="min-w-0 flex-1 text-sm text-secondary">
-                  {WEEKDAY_LABELS[lesson.weekday]},{" "}
-                  <span className="tabular-nums text-primary">{formatItalianDate(lesson.lesson_date, "long")}</span>
-                </div>
-                <Badge variant={lesson.mode === "presenza" ? "active" : "warning"}>
-                  {LESSON_MODE_LABELS[lesson.mode as "presenza" | "asincrona"] ?? lesson.mode}
+              <li
+                key={lesson.id}
+                className="flex items-center gap-3 rounded-control border border-border bg-surface-muted/40 px-3 py-2.5"
+              >
+                <span className="min-w-0 flex-1 text-sm text-secondary">
+                  {WEEKDAY_LABELS[lesson.weekday]}{" "}
+                  <span className="text-primary">{formatItalianDate(lesson.lesson_date, "long")}</span>
+                </span>
+                <Badge
+                  size="sm"
+                  variant={lesson.mode === "presenza" ? "active" : "warning"}
+                  title={LESSON_MODE_LABELS[lesson.mode as "presenza" | "asincrona"] ?? lesson.mode}
+                >
+                  {lesson.mode === "presenza" ? "In presenza" : "Asincrona"}
                 </Badge>
               </li>
             ))}
           </ul>
-      </Card>}
+        </Card>
+      )}
     </PageShell>
   );
 }

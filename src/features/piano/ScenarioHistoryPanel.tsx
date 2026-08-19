@@ -128,7 +128,7 @@ function ScenarioList({
   if (cycles.length === 0) return null;
   return (
     <section>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-secondary">{title}</p>
+      <p className="mb-2 text-xs font-semibold text-secondary">{title}</p>
       <ul className="space-y-1.5">
         {cycles.map((cycle) => (
           <li key={cycle.id}>
@@ -136,19 +136,19 @@ function ScenarioList({
               type="button"
               onClick={() => cycle.id && onSelect(cycle.id)}
               aria-current={cycle.id === currentCycleId ? "true" : undefined}
-              className={`flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs transition ${
+              className={`flex w-full flex-wrap items-center justify-between gap-2 rounded-control border px-3 py-2 text-left text-xs transition ${
                 cycle.id === currentCycleId
                   ? "border-accent bg-accent/10 text-primary"
-                  : "border-border bg-surface/40 text-secondary hover:border-border-strong hover:text-primary"
+                  : "border-border bg-surface-muted/40 text-secondary hover:border-border-strong hover:text-primary"
               }`}
             >
               <span className="font-mono">{cycle.academicYear}</span>
               <span>anno {cycle.studentYear} · {cycle.track}</span>
               <span className="flex items-center gap-1.5">
-                <Badge variant={cycle.status === "polimi_compiled" ? "success" : cycle.status === "ready" ? "active" : "neutral"} className="py-0 text-[10px]">
+                <Badge variant={cycle.status === "polimi_compiled" ? "success" : cycle.status === "ready" ? "active" : "neutral"} className="py-0 text-[11px]">
                   {STATUS_LABEL[cycle.status]}
                 </Badge>
-                {cycle.id === activeCycleId && <Badge variant="active" className="py-0 text-[10px]">attivo</Badge>}
+                {cycle.id === activeCycleId && <Badge variant="active" className="py-0 text-[11px]">attivo</Badge>}
               </span>
             </button>
           </li>
@@ -188,7 +188,7 @@ function NewScenarioForm({
         name="academicYear"
         aria-label="Anno accademico del nuovo piano"
         defaultValue={defaultAcademicYear}
-        className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary"
+        className="rounded-control border border-border bg-surface px-3 py-2 text-sm text-primary"
       >
         {AVAILABLE_ACADEMIC_YEARS.map((year) => <option key={year} value={year}>{year}</option>)}
       </select>
@@ -196,7 +196,7 @@ function NewScenarioForm({
         name="studentYear"
         aria-label="Anno di corso"
         defaultValue={defaultStudentYear}
-        className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary"
+        className="rounded-control border border-border bg-surface px-3 py-2 text-sm text-primary"
       >
         <option value={1}>Anno 1</option>
         <option value={2}>Anno 2</option>
@@ -206,7 +206,7 @@ function NewScenarioForm({
         name="track"
         aria-label="Percorso"
         defaultValue={defaultTrack}
-        className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary"
+        className="rounded-control border border-border bg-surface px-3 py-2 text-sm text-primary"
       >
         {Object.values(TRACKS).map((track) => <option key={track.code} value={track.code}>{track.label}</option>)}
       </select>
