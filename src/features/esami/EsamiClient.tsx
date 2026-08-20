@@ -13,6 +13,8 @@ import { markExamRegisteredAction, setExamStatusAction, setExamGradeAction } fro
 import { celebrate, celebrateBig } from "@/components/ui/Confetti";
 import InfoButton from "@/components/ui/InfoButton";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
+import Callout from "@/components/ui/Callout";
+import EmptyState from "@/components/ui/EmptyState";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
@@ -225,7 +227,7 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
             exit={{ opacity: 0, y: -16 }}
             role="status"
             className={cn(
-              "fixed right-4 top-20 z-50 rounded-xl border px-4 py-3 text-sm font-semibold shadow-elevated",
+              "fixed right-4 top-[4.5rem] z-50 max-w-[calc(100vw-2rem)] rounded-card border px-4 py-3 text-sm font-medium shadow-elevated lg:top-6",
               toast.variant === "success" ? "border-success/30 bg-success/10 text-success" : "border-danger/30 bg-danger/10 text-danger"
             )}
           >
@@ -234,52 +236,64 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
         )}
       </AnimatePresence>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="relative">
-          <StatTile label="Media Pesata" value={average ? average.toFixed(2) : "—"} accent="sky" />
-          <div className="absolute right-2 top-2">
-            <InfoButton title="Media Pesata">
+      {/* Metriche: l'InfoButton vive nell'intestazione del riquadro, non sopra al numero. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatTile
+          label="Media pesata"
+          value={average ? average.toFixed(2) : "—"}
+          hint={average ? `stima laurea ${estimatedFinal}/110` : "nessun voto verbalizzato"}
+          accent={average ? "sky" : undefined}
+          info={
+            <InfoButton size="sm" title="Media pesata">
               <p>Media ponderata sui CFU degli esami <strong>verbalizzati</strong> con voto.</p>
               <p>Non include esami senza voto o non ancora verbalizzati.</p>
-              {average && <p className="mt-1 text-accent">Stima laurea: {estimatedFinal}/110</p>}
             </InfoButton>
-          </div>
-        </div>
-        <StatTile label="CFU Verbalizzati" value={`${passedCFU}`} accent="green" />
-        <div className="relative">
-          <StatTile label="CFU Nuove Frequenze" value={`${newFrequencyCFU}`} />
-          <div className="absolute right-2 top-2">
-            <InfoButton title="CFU Nuove Frequenze">
+          }
+        />
+        <StatTile label="CFU verbalizzati" value={`${passedCFU}`} hint="acquisiti in carriera" accent="green" />
+        <StatTile
+          label="CFU nuove frequenze"
+          value={`${newFrequencyCFU}`}
+          hint="di quest'anno accademico"
+          info={
+            <InfoButton size="sm" title="CFU nuove frequenze">
               <p>Corsi che segui per la prima volta in questo anno accademico.</p>
               <p>Sono i soli conteggiati per la contribuzione: i reinserimenti sono già stati pagati.</p>
             </InfoButton>
-          </div>
-        </div>
-        <div className="relative">
-          <StatTile label="CFU Reinseriti" value={`${reinsertedCFU}`} accent="amber" />
-          <div className="absolute right-2 top-2">
-            <InfoButton title="CFU Reinseriti">
+          }
+        />
+        <StatTile
+          label="CFU reinseriti"
+          value={`${reinsertedCFU}`}
+          hint="frequenze già acquisite"
+          accent="amber"
+          info={
+            <InfoButton size="sm" title="CFU reinseriti">
               <p>Esami già frequentati e non ancora verbalizzati, riportati nel piano di quest&apos;anno.</p>
               <p>Non contano nei CFU di nuova frequenza.</p>
             </InfoButton>
-          </div>
-        </div>
+          }
+        />
       </div>
 
-      {/* Warning for unregistered */}
       {unregisteredCount > 0 && (
-        <Card className="border-warning/30 bg-[linear-gradient(180deg,rgba(245,181,76,0.10),rgba(10,15,20,0.9))]">
-          <p className="text-sm font-semibold text-primary">{unregisteredCount} esame/i superato/i non verbalizzato/i</p>
-          <p className="mt-1 text-sm text-muted">Non scalano i recuperi e non entrano in media finché non risultano verbalizzati.</p>
-        </Card>
+        <Callout
+          tone="warning"
+          title={unregisteredCount === 1
+            ? "1 esame superato non verbalizzato"
+            : `${unregisteredCount} esami superati non verbalizzati`}
+        >
+          Non scalano i recuperi e non entrano nella media finché non risultano verbalizzati.
+        </Callout>
       )}
 
-      <section aria-label="Filtri esami" className="rounded-card border border-border bg-surface/60 p-4">
+      <section aria-label="Filtri esami" className="rounded-card border border-border bg-surface p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-sm font-semibold text-primary">Filtri</h2>
-            <p className="text-xs text-muted">{filtered.length} {filtered.length === 1 ? "esame visualizzato" : "esami visualizzati"} su {rows.length}</p>
+            <p className="mt-0.5 text-xs text-muted">
+              {filtered.length} {filtered.length === 1 ? "esame visualizzato" : "esami visualizzati"} su {rows.length}
+            </p>
           </div>
           {(filterYear !== "all" || filterStatus !== "all") && (
             <Button
@@ -292,9 +306,11 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
             </Button>
           )}
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 sm:max-w-2xl">
           <div className="space-y-1.5">
-            <label htmlFor={yearFilterId} className={fieldLabelClass}>Anno</label>
+            <span className="flex min-h-7 items-center gap-1">
+              <label htmlFor={yearFilterId} className={fieldLabelClass}>Anno</label>
+            </span>
             <select
               id={yearFilterId}
               value={filterYear === "all" ? "all" : String(filterYear)}
@@ -308,9 +324,9 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
             </select>
           </div>
           <div className="space-y-1.5">
-            <span className="flex items-center gap-1.5">
+            <span className="flex min-h-7 items-center gap-1">
               <label htmlFor={statusFilterId} className={fieldLabelClass}>Stato</label>
-              <InfoButton title="Stati esame">
+              <InfoButton size="sm" title="Stati esame">
                 <p><strong>Da fare</strong>: esame non ancora affrontato.</p>
                 <p><strong>Non passato</strong>: tentato ma non superato.</p>
                 <p><strong>Superato</strong>: passato, in attesa di verbalizzazione.</p>
@@ -360,9 +376,9 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
                       isDone && "border-l-2 border-l-success/40"
                     )}
                   >
-                    {/* Compact row */}
-                    <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-                      <div className="min-w-0 flex-1">
+                    {/* Riga compatta */}
+                    <div className="flex flex-wrap items-center gap-3 px-1 py-3 sm:px-2">
+                      <div className="min-w-[11rem] flex-1">
                         {calendarSubject ? (
                           <Link href={`/materie/${encodeURIComponent(calendarSubject)}`} title={course.name} className="line-clamp-2 text-sm font-medium text-primary transition hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
                             {course.name}
@@ -370,11 +386,10 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
                         ) : (
                           <p className="line-clamp-2 text-sm font-medium text-primary" title={course.name}>{course.name}</p>
                         )}
-                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                          <p className="text-xs text-muted">{course.cfu} CFU</p>
-                          <span className="text-xs text-muted">{entry.position === "supernumerary" ? "In soprannumero" : "Conta nei 180 CFU"}</span>
-                          {!entry.feeCounted && <span className="text-xs text-success">Frequenza già acquisita</span>}
-                        </div>
+                        <p className="mt-0.5 text-xs text-muted">
+                          {course.cfu} CFU · {entry.position === "supernumerary" ? "in soprannumero" : "conta nei 180 CFU"}
+                          {!entry.feeCounted && " · frequenza già acquisita"}
+                        </p>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant={STATUS_VARIANT[exam.status]}>{STATUS_LABELS[exam.status]}</Badge>
@@ -467,11 +482,24 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
       })}
 
       {filtered.length === 0 && (
-        <p className="py-16 text-center text-sm text-muted">Nessun esame corrisponde ai filtri selezionati.</p>
+        <EmptyState
+          title="Nessun esame corrisponde ai filtri"
+          description="Rimuovi o cambia un filtro per rivedere gli esami del piano."
+          action={
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => { setFilterYear("all"); setFilterStatus("all"); }}
+            >
+              Reimposta filtri
+            </Button>
+          }
+        />
       )}
 
       <p className="text-xs text-muted">
-        Esami registrati: {registeredCount} / {rows.length}. La media usa solo esami verbalizzati con voto.
+        Verbalizzati {registeredCount} su {rows.length}. La media considera solo gli esami verbalizzati con voto.
       </p>
     </div>
   );
@@ -480,7 +508,7 @@ export default function EsamiClient({ initialExams, scenario, calendarSubjectByC
 function FieldShell({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="flex items-center gap-1.5">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</span>
+      <span className="text-xs font-medium text-muted">{label}</span>
       {children}
     </label>
   );

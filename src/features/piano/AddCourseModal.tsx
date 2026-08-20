@@ -17,6 +17,7 @@ import type { Track } from "@/lib/polimi/constraints";
 import type { CourseYear } from "@/lib/polimi/catalog/types";
 import { cn } from "@/lib/ui";
 import { IconButton } from "@/components/ui/IconButton";
+import EmptyState from "@/components/ui/EmptyState";
 import { useModalDialog } from "@/components/ui/useModalDialog";
 
 /**
@@ -130,7 +131,7 @@ export default function AddCourseModal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="relative z-10 flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col rounded-panel border border-border bg-background-soft shadow-elevated sm:max-h-[86vh]"
+        className="relative z-10 flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col rounded-card border border-border-strong bg-surface-elevated shadow-elevated sm:max-h-[86vh]"
       >
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div>
@@ -141,13 +142,13 @@ export default function AddCourseModal({
               {catalog.dataStatus === "to_verify" && " · dati da riconfermare"}
             </p>
           </div>
-          <IconButton onClick={onClose} label="Chiudi catalogo" size="md" className="border-transparent bg-transparent">
-            <X className="size-4" />
+          <IconButton onClick={onClose} label="Chiudi catalogo" size="md" variant="ghost">
+            <X className="size-4" aria-hidden="true" />
           </IconButton>
         </div>
 
         <div className="space-y-2 border-b border-border px-4 py-3">
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2">
+          <div className="flex items-center gap-2 rounded-control border border-border bg-surface px-3 py-2">
             <Search className="size-4 shrink-0 text-muted" />
             <input
               ref={searchRef}
@@ -181,12 +182,15 @@ export default function AddCourseModal({
 
         <div className="flex-1 space-y-4 overflow-y-auto p-3">
           {visible.length === 0 && (
-            <p className="py-8 text-center text-sm text-muted">Nessun insegnamento disponibile con questi filtri.</p>
+            <EmptyState
+              title="Nessun insegnamento con questi filtri"
+              description="Prova a togliere un filtro o a cercare per nome o codice."
+            />
           )}
 
           {grouped.map(({ bucket, courses }) => (
             <section key={bucket}>
-              <p className="px-1 text-xs font-semibold uppercase tracking-wide text-secondary">{BUCKET_LABELS[bucket]}</p>
+              <h3 className="px-1 text-sm font-semibold text-primary">{BUCKET_LABELS[bucket]}</h3>
               <p className="mb-2 px-1 text-xs leading-relaxed text-muted">{BUCKET_HINTS[bucket]}</p>
               <div className="space-y-1.5">
                 {courses.map((course) => (
@@ -204,7 +208,7 @@ export default function AddCourseModal({
         </div>
 
         <div className="border-t border-border px-4 py-3">
-          <Button variant="ghost" size="sm" onClick={onClose} className="w-full">Chiudi</Button>
+          <Button variant="secondary" onClick={onClose} className="w-full">Chiudi</Button>
         </div>
       </div>
     </div>
@@ -218,8 +222,9 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "rounded-full border px-2.5 py-1 text-[11px] font-medium transition",
-        active ? "border-accent bg-accent/10 text-accent" : "border-border text-secondary hover:border-border-strong hover:text-primary"
+        "inline-flex min-h-8 items-center rounded-full border px-3 text-xs font-medium transition",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+        active ? "border-accent bg-accent/10 text-accent" : "border-border text-secondary hover:border-border-strong hover:bg-surface-hover hover:text-primary"
       )}
     >
       {children}
@@ -239,30 +244,33 @@ function CourseRow({
   onAdd: () => void;
 }) {
   return (
-    <div className={cn("rounded-xl border transition", expanded ? "border-accent/40 bg-accent/5" : "border-border bg-surface/40")}>
-      <div className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:gap-2">
-        <button type="button" onClick={onToggle} aria-expanded={expanded} className="min-w-0 flex-1 text-left">
-          <p className="line-clamp-2 text-sm font-medium text-primary" title={course.name}>{course.name}</p>
-          <p className="mt-0.5 line-clamp-2 text-xs text-muted">{course.code} · {course.summary}</p>
+    <div className={cn("rounded-control border transition", expanded ? "border-accent/40 bg-accent/5" : "border-border bg-surface-muted/40")}>
+      <div className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 items-start gap-2 rounded-control text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium leading-snug text-primary" title={course.name}>{course.name}</span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-muted">{course.code} · {course.summary}</span>
+          </span>
+          <ChevronDown
+            className={cn("mt-0.5 size-4 shrink-0 text-muted transition-transform", expanded && "rotate-180")}
+            aria-hidden="true"
+          />
         </button>
         <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 sm:justify-end">
-          {course.linkedModule && <Badge variant="neutral" className="py-0 text-[10px]">+ progetto</Badge>}
+          {course.linkedModule && <Badge size="sm" variant="neutral">+ progetto</Badge>}
           {course.limitations.length > 0 && (
             <span title="Ci sono limitazioni da leggere" className="text-warning">
-              <AlertTriangle className="size-3.5" />
+              <AlertTriangle className="size-3.5" aria-hidden="true" />
             </span>
           )}
-          <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold", CATEGORY_COLORS[course.category] ?? "bg-surface text-muted")}>
+          <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-bold", CATEGORY_COLORS[course.category] ?? "bg-surface-muted text-muted")}>
             {course.category}
           </span>
-          <IconButton
-            onClick={onToggle}
-            label={expanded ? `Chiudi dettagli di ${course.name}` : `Mostra dettagli di ${course.name}`}
-            size="md"
-            className="ml-auto border-transparent bg-transparent sm:ml-0"
-          >
-            <ChevronDown className={cn("size-4 transition-transform", expanded && "rotate-180")} />
-          </IconButton>
           <Button size="sm" onClick={onAdd}>Aggiungi</Button>
         </div>
       </div>
@@ -272,7 +280,7 @@ function CourseRow({
           <dl className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
             {course.facts.map((fact) => (
               <div key={fact.label} className="text-xs">
-                <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted">{fact.label}</dt>
+                <dt className="text-xs text-muted">{fact.label}</dt>
                 <dd className="text-secondary">{fact.value}</dd>
               </div>
             ))}
@@ -286,20 +294,20 @@ function CourseRow({
           )}
 
           {course.satisfies && (
-            <p className="rounded-lg border border-success/25 bg-success/5 px-3 py-2 text-xs leading-relaxed text-success">
+            <p className="rounded-control border border-success/25 bg-success/5 px-3 py-2 text-xs leading-relaxed text-success">
               {course.satisfies}
             </p>
           )}
 
           {course.isFreeChoiceOnly && (
-            <p className="rounded-lg border border-border bg-surface/60 px-3 py-2 text-xs leading-relaxed text-muted">
+            <p className="rounded-control border border-border bg-surface-muted/50 px-3 py-2 text-xs leading-relaxed text-muted">
               Non copre nessun obbligo: è soltanto una scelta libera. Va bene se ti interessa la materia o se ti serve
               per completare i CFU a scelta.
             </p>
           )}
 
           {course.limitations.map((limitation) => (
-            <p key={limitation} className="flex gap-2 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-xs leading-relaxed text-warning">
+            <p key={limitation} className="flex gap-2 rounded-control border border-warning/25 bg-warning/5 px-3 py-2 text-xs leading-relaxed text-warning">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
               {limitation}
             </p>

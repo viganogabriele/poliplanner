@@ -3,16 +3,23 @@
 import { CheckCircle2, ChevronRight, CircleAlert, FileCheck2 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import Callout from "@/components/ui/Callout";
 import InfoButton from "@/components/ui/InfoButton";
 import { TRACKS, type PlanStatus, type PlanValidationMode } from "@/lib/polimi/constraints";
 import type { PlanValidationResult } from "@/lib/polimi/validation";
 import type { NextYearAction } from "@/lib/pianoPage";
 import { cn } from "@/lib/ui";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { bucketIssues } from "./PlanIssuesAside";
 
 /**
- * Testata compatta. Risponde nell'ordine alle prime due domande della pagina: qual è il piano
- * attivo e per quale anno accademico, e cosa risulta già chiuso in carriera.
+ * Testata del piano. Risponde nell'ordine alle prime domande della pagina: qual è il piano
+ * attivo e per quale anno accademico, com'è andata la verifica, quanti CFU muove.
+ *
+ * Tutto questo sta in **una** scheda di riepilogo: prima erano cinque riquadri colorati
+ * impilati che dicevano quasi la stessa cosa. Restano fuori solo i messaggi che chiedono
+ * un'azione o segnalano un'eccezione.
  *
  * Lo stato del piano guarda solo i problemi di quest'anno: gli obblighi degli anni successivi
  * stanno nell'anteprima e non colorano di giallo un piano che va benissimo.
@@ -29,11 +36,17 @@ export const MODE_LABEL: Record<PlanValidationMode, string> = {
   second_semester_revision: "Modifica del 2° semestre",
 };
 
-const STATUS_TONE: Record<PlanValidationResult["summary"]["status"], { label: string; variant: "success" | "warning" | "danger"; icon: React.ReactNode }> = {
-  valid: { label: "Nessun problema per quest'anno", variant: "success", icon: <CheckCircle2 className="size-4" /> },
-  warning: { label: "Da controllare prima di compilare", variant: "warning", icon: <CircleAlert className="size-4" /> },
-  invalid: { label: "Da sistemare prima di compilare", variant: "danger", icon: <CircleAlert className="size-4" /> },
+const STATUS_TONE: Record<PlanValidationResult["summary"]["status"], { label: string; variant: "success" | "warning" | "danger" }> = {
+  valid: { label: "Nessun problema per quest'anno", variant: "success" },
+  warning: { label: "Da controllare prima di compilare", variant: "warning" },
+  invalid: { label: "Da sistemare prima di compilare", variant: "danger" },
 };
+
+const TONE_TEXT = {
+  success: "text-success",
+  warning: "text-warning",
+  danger: "text-danger",
+} as const;
 
 type Props = {
   validation: PlanValidationResult;
@@ -60,6 +73,13 @@ export default function PlanHeader({
 }: Props) {
   const { summary } = validation;
   const tone = STATUS_TONE[summary.status];
+  const { errors, warnings } = bucketIssues(validation);
+  const headline = errors.length > 0
+    ? `${errors.length} ${errors.length === 1 ? "problema da risolvere" : "problemi da risolvere"}`
+    : warnings.length > 0
+      ? `${warnings.length} ${warnings.length === 1 ? "avviso da controllare" : "avvisi da controllare"}`
+      : tone.label;
+  const StatusIcon = summary.status === "valid" ? CheckCircle2 : CircleAlert;
 
   return (
     <div className="space-y-4">
@@ -68,72 +88,75 @@ export default function PlanHeader({
         eyebrow={`Anno accademico ${summary.academicYear}`}
         subtitle={`Anno ${summary.studentYear} · ${TRACKS[summary.track].label}`}
       />
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={!isSaved ? "warning" : planStatus === "polimi_compiled" ? "success" : planStatus === "ready" ? "active" : "neutral"}>
-          {!isSaved ? "Proposta non salvata" : STATUS_LABEL[planStatus]}
-        </Badge>
-        {isSaved && (isActive
-          ? <Badge variant="active" dot>Piano attivo</Badge>
-          : <Badge variant="neutral">In consultazione</Badge>)}
-        {validationMode === "second_semester_revision" && (
-          <Badge variant="active">{MODE_LABEL[validationMode]}</Badge>
-        )}
-        {summary.dataStatus === "to_verify" && <Badge variant="warning">Dati da riconfermare</Badge>}
-      </div>
 
       {!isSaved && (
-        <p className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-sm leading-relaxed text-secondary">
-          Questa è una proposta calcolata dall&apos;app. Non diventa un piano attivo finché non la salvi.
-        </p>
+        <Callout tone="warning" title="Proposta non salvata">
+          È il piano che l&apos;app calcola per te. Non diventa un piano attivo finché non lo salvi.
+        </Callout>
       )}
 
-      <div className={cn(
-        "hidden items-start gap-3 rounded-xl border px-4 py-3 sm:flex",
-        tone.variant === "success" ? "border-success/30 bg-success/5" : tone.variant === "warning" ? "border-warning/30 bg-warning/5" : "border-danger/30 bg-danger/5"
-      )}>
-        <span className={tone.variant === "success" ? "text-success" : tone.variant === "warning" ? "text-warning" : "text-danger"}>{tone.icon}</span>
-        <div>
-          <p className="text-sm font-semibold text-primary">{tone.label}</p>
-          <p className="mt-0.5 text-xs text-muted">La verifica considera solo gli obblighi esigibili nel piano corrente.</p>
+      {/* Riepilogo: stato, verifica e CFU in un'unica scheda. */}
+      <Card elevated>
+        {/* Le pillole servono solo quando aggiungono qualcosa: se il piano non è salvato
+            lo dice già il riquadro qui sopra. */}
+        {(isSaved || validationMode === "second_semester_revision" || summary.dataStatus === "to_verify") && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            {isSaved && (
+              <Badge variant={planStatus === "polimi_compiled" ? "success" : planStatus === "ready" ? "active" : "neutral"}>
+                {STATUS_LABEL[planStatus]}
+              </Badge>
+            )}
+            {isSaved && (isActive
+              ? <Badge variant="active" dot>Piano attivo</Badge>
+              : <Badge variant="neutral">In consultazione</Badge>)}
+            {validationMode === "second_semester_revision" && (
+              <Badge variant="active">{MODE_LABEL[validationMode]}</Badge>
+            )}
+            {summary.dataStatus === "to_verify" && <Badge variant="warning">Dati da riconfermare</Badge>}
+          </div>
+        )}
+
+        <div className="flex items-start gap-2.5">
+          <StatusIcon className={cn("mt-0.5 size-4 shrink-0", TONE_TEXT[tone.variant])} aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-primary">{headline}</p>
+            <p className="mt-0.5 text-xs text-muted">
+              {errors.length > 0 || warnings.length > 0
+                ? tone.label
+                : "La verifica considera solo gli obblighi esigibili nel piano corrente."}
+            </p>
+          </div>
         </div>
-      </div>
+
+        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 border-t border-border pt-4 sm:grid-cols-4">
+          <Metric label="Totale del piano" value={summary.effectiveCfu} hint="attività effettive" tone="accent" prominent />
+          <Metric label="Verbalizzati" value={summary.registeredCareerCfu} hint="in carriera" tone="success" />
+          <Metric label="Reinseriti" value={summary.reinsertedCfu} hint="già frequentati" tone="warning" />
+          <Metric label="Nuovi" value={summary.contributionCfu} hint="per contribuzione" info={summary.contributionRule} />
+        </dl>
+      </Card>
 
       {nextYearAction && isSaved && (
-        <div className="flex flex-col gap-3 rounded-xl border border-accent/40 bg-accent/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <p className="flex items-center gap-2 text-sm font-semibold text-primary">
-              <FileCheck2 className="size-4 text-accent" />
-              {nextYearAction.kind === "open_existing"
-                ? `Apri il piano ${nextYearAction.academicYear}`
-                : `Crea il piano ${nextYearAction.academicYear}`}
-            </p>
-            <p className="mt-0.5 text-xs text-muted">{nextYearAction.reason}</p>
-          </div>
-          <Button variant="primary" onClick={onNextYear} disabled={pending} className="shrink-0">
-            {nextYearAction.kind === "open_existing" ? "Apri" : "Passa all'anno successivo"}
-            <ChevronRight className="size-4" />
-          </Button>
-        </div>
+        <Callout
+          tone="info"
+          icon={<FileCheck2 className="size-4" aria-hidden="true" />}
+          title={nextYearAction.kind === "open_existing"
+            ? `Apri il piano ${nextYearAction.academicYear}`
+            : `Crea il piano ${nextYearAction.academicYear}`}
+          actions={
+            <Button variant="primary" onClick={onNextYear} disabled={pending}>
+              {nextYearAction.kind === "open_existing" ? "Apri" : "Passa all'anno successivo"}
+              <ChevronRight className="size-4" aria-hidden="true" />
+            </Button>
+          }
+        >
+          {nextYearAction.reason}
+        </Callout>
       )}
 
       {dataStatusReason && (
-        <p className="rounded-xl border border-warning/30 bg-warning/5 px-3 py-2 text-xs leading-relaxed text-warning">
-          {dataStatusReason}
-        </p>
+        <Callout tone="warning">{dataStatusReason}</Callout>
       )}
-
-      <div className="grid gap-2 sm:grid-cols-[1.2fr_2fr]">
-        <div className="rounded-xl border border-accent/30 bg-accent/5 px-4 py-3">
-          <p className="text-xs font-semibold text-secondary">Totale del piano</p>
-          <p className="mt-1 whitespace-nowrap font-mono text-3xl font-semibold text-accent">{summary.effectiveCfu} CFU</p>
-          <p className="mt-1 text-xs text-muted">Attività effettive di quest&apos;anno</p>
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          <Metric label="Verbalizzati" value={summary.registeredCareerCfu} hint="in carriera" tone="success" />
-          <Metric label="Reinseriti" value={summary.reinsertedCfu} hint="già frequentati" tone="warning" />
-          <Metric label="Nuovi" value={summary.contributionCfu} hint="per contribuzione" tone="accent" info={summary.contributionRule} />
-        </div>
-      </div>
     </div>
   );
 }
@@ -144,26 +167,31 @@ function Metric({
   hint,
   tone,
   info,
+  prominent = false,
 }: {
   label: string;
   value: number;
   hint: string;
   tone?: "success" | "warning" | "accent";
   info?: string;
+  prominent?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-surface/60 px-3 py-2">
-      <div className="flex items-start justify-between gap-1">
-        <p className="text-xs font-semibold text-secondary">{label}</p>
-        {info && <InfoButton title={label}><p>{info}</p></InfoButton>}
-      </div>
-      <p className={cn(
-        "whitespace-nowrap font-mono text-xl font-semibold",
-        tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : tone === "accent" ? "text-accent" : "text-primary"
-      )}>
-        {value}
-      </p>
-      <p className="text-[11px] text-muted">{hint}</p>
+    <div className="min-w-0">
+      <dt className="flex items-center gap-1 text-xs text-muted">
+        {label}
+        {info && <InfoButton size="sm" title={label}><p>{info}</p></InfoButton>}
+      </dt>
+      <dd
+        className={cn(
+          "mt-0.5 whitespace-nowrap font-semibold tabular-nums",
+          prominent ? "text-3xl" : "text-2xl",
+          tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : tone === "accent" ? "text-accent" : "text-primary"
+        )}
+      >
+        {value} <span className="text-xs font-medium text-muted">CFU</span>
+      </dd>
+      <dd className="mt-0.5 text-xs text-muted">{hint}</dd>
     </div>
   );
 }

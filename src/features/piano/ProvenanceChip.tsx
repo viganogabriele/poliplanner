@@ -27,7 +27,7 @@ export const SEVERITY_BORDERS: Record<IssueSeverity, string> = {
   error: "border-danger/30 bg-danger/5",
   warning: "border-warning/30 bg-warning/5",
   advice: "border-accent/25 bg-accent/5",
-  info: "border-border bg-surface/40",
+  info: "border-border bg-surface-muted/40",
 };
 
 export function ProvenanceChip({ provenance }: { provenance: RuleProvenance }) {
@@ -35,7 +35,7 @@ export function ProvenanceChip({ provenance }: { provenance: RuleProvenance }) {
   return (
     <span
       title={PROVENANCE_LABELS[provenance]}
-      className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${style.className}`}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] font-semibold ${style.className}`}
     >
       {style.icon}
       {style.short}
@@ -45,13 +45,13 @@ export function ProvenanceChip({ provenance }: { provenance: RuleProvenance }) {
 
 export function ProvenanceLegend() {
   return (
-    <div className="rounded-xl border border-border bg-surface/40 p-3">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted">Provenienza dei vincoli</p>
+    <div className="rounded-control border border-border bg-surface-muted/40 p-3">
+      <p className="mb-2 text-[11px] font-semibold text-muted">Provenienza dei vincoli</p>
       <ul className="space-y-1.5">
         {(Object.keys(PROVENANCE_STYLE) as RuleProvenance[]).map((provenance) => (
           <li key={provenance} className="flex items-start gap-2">
             <ProvenanceChip provenance={provenance} />
-            <span className="text-[10px] leading-snug text-muted">{PROVENANCE_LABELS[provenance]}</span>
+            <span className="text-[11px] leading-snug text-muted">{PROVENANCE_LABELS[provenance]}</span>
           </li>
         ))}
       </ul>

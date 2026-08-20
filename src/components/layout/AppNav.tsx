@@ -17,13 +17,13 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/ui";
 
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard",      mobileLabel: "Home",   icon: LayoutDashboard, mobile: true },
-  { href: "/lessons",   label: "Lezioni",         mobileLabel: "Lezioni",icon: ListChecks,      mobile: true },
-  { href: "/piano",     label: "Piano di Studi",  mobileLabel: "Piano",  icon: GraduationCap,   mobile: true },
-  { href: "/esami",     label: "Esami",            mobileLabel: "Esami",  icon: Award,           mobile: true },
-  { href: "/materie",   label: "Materie",          mobileLabel: "Materie",icon: BookOpen,        mobile: true },
-  { href: "/calendar",  label: "Calendario",       mobileLabel: "Cal.",   icon: CalendarDays,    mobile: false },
-  { href: "/settings",  label: "Impostazioni",     mobileLabel: "Imp.",   icon: Settings,        mobile: false },
+  { href: "/dashboard", label: "Dashboard",      mobileLabel: "Home",    icon: LayoutDashboard, mobile: true },
+  { href: "/lessons",   label: "Lezioni",         mobileLabel: "Lezioni", icon: ListChecks,      mobile: true },
+  { href: "/piano",     label: "Piano di studi",  mobileLabel: "Piano",   icon: GraduationCap,   mobile: true },
+  { href: "/esami",     label: "Esami",            mobileLabel: "Esami",   icon: Award,           mobile: true },
+  { href: "/materie",   label: "Materie",          mobileLabel: "Materie", icon: BookOpen,        mobile: true },
+  { href: "/calendar",  label: "Calendario",       mobileLabel: "Cal.",    icon: CalendarDays,    mobile: false },
+  { href: "/settings",  label: "Impostazioni",     mobileLabel: "Imp.",    icon: Settings,        mobile: false },
 ] as const;
 
 const MOBILE_NAV = NAV_ITEMS.filter((i) => i.mobile && i.href !== "/materie");
@@ -51,21 +51,19 @@ export default function AppNav() {
     <>
       <nav
         aria-label="Navigazione principale"
-        className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-border bg-background-soft px-3 py-5 shadow-inset lg:flex"
+        className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-border bg-background-soft px-3 py-5 lg:flex"
       >
-        <div className="mb-7 flex items-center gap-3 px-2">
-          <div className="grid size-10 place-items-center rounded-full border border-accent/30 bg-accent/10 text-accent shadow-glow">
-            <BookOpen className="size-5" aria-hidden="true" />
-          </div>
-          <div>
-            <span className="block text-sm font-semibold text-primary">
-              Poliplanner
-            </span>
-            <span className="text-xs text-muted">Piano universitario</span>
-          </div>
-        </div>
+        <Link
+          href="/dashboard"
+          className="mb-6 flex items-center gap-2.5 rounded-control px-2 py-1.5 transition hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+        >
+          <span className="grid size-8 place-items-center rounded-control bg-accent/12 text-accent">
+            <BookOpen className="size-4" aria-hidden="true" />
+          </span>
+          <span className="text-sm font-semibold text-primary">Poliplanner</span>
+        </Link>
 
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {NAV_ITEMS.map((item) => (
             <DesktopNavItem
               key={item.href}
@@ -74,28 +72,24 @@ export default function AppNav() {
             />
           ))}
         </div>
-
       </nav>
 
-      <header className="fixed inset-x-0 top-0 z-30 border-b border-border bg-background/90 backdrop-blur-xl lg:hidden">
-        <div className="flex h-16 items-center px-4">
-          <div className="flex items-center gap-3">
-            <div className="grid size-9 place-items-center rounded-full border border-accent/30 bg-accent/10 text-accent">
-              <BookOpen className="size-4" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-primary">Poliplanner</p>
-              <p className="text-xs text-muted">{currentItem?.label ?? "Dashboard"}</p>
-            </div>
-          </div>
+      <header className="fixed inset-x-0 top-0 z-30 border-b border-border bg-background/85 backdrop-blur-xl lg:hidden">
+        {/* Solo il marchio: il titolo della pagina è l'h1 subito sotto, e la barra
+            in basso indica già dove ci si trova. */}
+        <div className="flex h-14 items-center gap-2.5 px-4">
+          <span className="grid size-7 place-items-center rounded-control bg-accent/12 text-accent">
+            <BookOpen className="size-3.5" aria-hidden="true" />
+          </span>
+          <span className="text-sm font-semibold text-primary">Poliplanner</span>
         </div>
       </header>
 
       <nav
         aria-label="Navigazione mobile"
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur-xl lg:hidden"
       >
-        <div className="grid grid-cols-5 gap-1">
+        <div className="grid grid-cols-5 gap-0.5">
           {MOBILE_NAV.map((item) => (
             <MobileNavItem
               key={item.href}
@@ -166,22 +160,28 @@ function MobileMoreMenu({
   return (
     <div ref={containerRef} className="relative">
       {open && (
-        <div ref={menuRef} id="mobile-more-menu" role="menu" className="absolute bottom-full right-0 z-40 mb-3 w-56 rounded-2xl border border-border bg-surface-elevated p-2 shadow-elevated">
+        <div
+          ref={menuRef}
+          id="mobile-more-menu"
+          role="menu"
+          className="animate-panel-open absolute bottom-full right-0 z-40 mb-2 w-56 rounded-card border border-border-strong bg-surface-elevated p-1.5 shadow-elevated"
+        >
           {MORE_NAV_ITEMS.map((item) => {
             const Icon = item.icon;
+            const isCurrent = currentItem?.href === item.href;
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 role="menuitem"
-                aria-current={currentItem?.href === item.href ? "page" : undefined}
+                aria-current={isCurrent ? "page" : undefined}
                 onClick={onClose}
                 className={cn(
-                  "flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium transition hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
-                  currentItem?.href === item.href ? "bg-accent/10 text-primary" : "text-secondary"
+                  "flex min-h-11 items-center gap-3 rounded-control px-3 text-sm transition hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+                  isCurrent ? "bg-surface-hover font-medium text-primary" : "text-secondary"
                 )}
               >
-                <Icon className="size-4 text-accent" aria-hidden="true" />
+                <Icon className={cn("size-4", isCurrent ? "text-accent" : "text-muted")} aria-hidden="true" />
                 {item.label}
               </Link>
             );
@@ -197,11 +197,12 @@ function MobileMoreMenu({
         aria-expanded={open}
         aria-controls="mobile-more-menu"
         className={cn(
-          "flex min-h-14 w-full flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-medium leading-none transition",
-          active || open ? "bg-surface-elevated text-primary" : "text-muted hover:bg-surface-hover hover:text-secondary"
+          "relative flex min-h-13 w-full flex-col items-center justify-center gap-1 rounded-control px-1 py-1.5 text-[11px] leading-none transition",
+          active || open ? "text-accent" : "text-muted hover:text-secondary"
         )}
       >
-        <CurrentIcon className={cn("size-5", active || open ? "text-accent" : "text-muted")} aria-hidden="true" />
+        {active && <span aria-hidden="true" className="absolute inset-x-2.5 top-0 h-0.5 rounded-full bg-accent" />}
+        <CurrentIcon className="size-5" aria-hidden="true" />
         <span aria-hidden="true" className="max-w-full truncate">{currentItem?.mobileLabel ?? "Altro"}</span>
       </button>
     </div>
@@ -216,23 +217,18 @@ function DesktopNavItem({ item, active }: { item: NavItem; active: boolean }) {
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+        "relative flex min-h-11 items-center gap-3 rounded-control px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
         active
-          ? "bg-surface-elevated text-primary shadow-inset"
+          ? "bg-surface-elevated font-medium text-primary"
           : "text-secondary hover:bg-surface-hover hover:text-primary"
       )}
     >
-      <span
-        className={cn(
-          "grid size-8 place-items-center rounded-full transition",
-          active
-            ? "bg-accent text-background"
-            : "bg-surface-muted text-muted group-hover:text-primary"
-        )}
-      >
-        <Icon className="size-4" aria-hidden="true" />
-      </span>
-      <span>{item.label}</span>
+      {active && <span aria-hidden="true" className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-accent" />}
+      <Icon
+        className={cn("size-4 shrink-0", active ? "text-accent" : "text-muted")}
+        aria-hidden="true"
+      />
+      <span className="truncate">{item.label}</span>
     </Link>
   );
 }
@@ -247,16 +243,12 @@ function MobileNavItem({ item, active, onClick }: { item: NavItem; active: boole
       aria-label={item.label}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-medium leading-none transition",
-        active
-          ? "bg-surface-elevated text-primary"
-          : "text-muted hover:bg-surface-hover hover:text-secondary"
+        "relative flex min-h-13 flex-col items-center justify-center gap-1 rounded-control px-1 py-1.5 text-[11px] leading-none transition",
+        active ? "text-accent" : "text-muted hover:text-secondary"
       )}
     >
-      <Icon
-        className={cn("size-5", active ? "text-accent" : "text-muted")}
-        aria-hidden="true"
-      />
+      {active && <span aria-hidden="true" className="absolute inset-x-2.5 top-0 h-0.5 rounded-full bg-accent" />}
+      <Icon className="size-5 shrink-0" aria-hidden="true" />
       <span aria-hidden="true" className="max-w-full whitespace-nowrap">
         {item.mobileLabel}
       </span>

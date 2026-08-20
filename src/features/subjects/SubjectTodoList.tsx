@@ -2,10 +2,11 @@
 
 import { useMemo, useOptimistic, useTransition } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { ArrowLeftRight } from "lucide-react";
 import { setLessonModeAction, toggleLessonAction } from "@/app/actions";
 import { formatItalianDate, WEEKDAY_LABELS } from "@/lib/dates";
 import { LESSON_MODE_LABELS, type LessonMode } from "@/lib/types";
-import { Badge } from "@/components/ui/Badge";
+import { cn } from "@/lib/ui";
 import type { SubjectLesson } from "@/lib/subjects";
 
 interface SubjectTodoListProps {
@@ -44,9 +45,7 @@ export default function SubjectTodoList({ items }: SubjectTodoListProps) {
   );
 
   if (visibleItems.length === 0) {
-    return (
-      <p className="py-6 text-center text-sm text-muted">Nessuna lezione arretrata. 🎉</p>
-    );
+    return <p className="py-5 text-center text-sm text-muted">Nessuna lezione arretrata.</p>;
   }
 
   return (
@@ -60,9 +59,9 @@ export default function SubjectTodoList({ items }: SubjectTodoListProps) {
             layout
             exit={{ opacity: 0, x: -16 }}
             transition={{ duration: 0.18 }}
-            className="flex items-center gap-3 rounded-card border border-border bg-surface-muted/60 px-4 py-3 transition"
+            className="flex items-center gap-2.5 rounded-control border border-border bg-surface-muted/40 px-3 py-2.5 transition hover:border-border-strong"
           >
-            <label className="-m-2 grid size-10 shrink-0 place-items-center">
+            <label className="grid size-8 shrink-0 place-items-center">
               <input
                 type="checkbox"
                 checked={false}
@@ -73,8 +72,9 @@ export default function SubjectTodoList({ items }: SubjectTodoListProps) {
               />
             </label>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-primary">
-                {WEEKDAY_LABELS[item.weekday]}, <span className="tabular-nums">{formatItalianDate(item.lesson_date, "long")}</span>
+              <p className="text-sm text-secondary">
+                {WEEKDAY_LABELS[item.weekday]}{" "}
+                <span className="font-medium text-primary">{formatItalianDate(item.lesson_date, "long")}</span>
               </p>
             </div>
             <button
@@ -82,11 +82,17 @@ export default function SubjectTodoList({ items }: SubjectTodoListProps) {
               onClick={() => handleModeToggle(item.id, mode)}
               disabled={isPending}
               aria-label={`Cambia modalità: attualmente ${LESSON_MODE_LABELS[mode]}`}
-              className="inline-flex min-h-10 items-center rounded-lg px-1 transition hover:bg-surface-hover disabled:cursor-not-allowed"
+              title={`Passa a ${mode === "asincrona" ? "in presenza" : "asincrona"}`}
+              className={cn(
+                "inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:cursor-not-allowed disabled:opacity-45",
+                mode === "presenza"
+                  ? "border-accent/30 bg-accent/10 text-accent hover:border-accent/60"
+                  : "border-warning/30 bg-warning/10 text-warning hover:border-warning/60"
+              )}
             >
-              <Badge variant={mode === "presenza" ? "active" : "warning"}>
-                {mode === "asincrona" ? "Asincrona" : "In presenza"}
-              </Badge>
+              <ArrowLeftRight className="size-3" aria-hidden="true" />
+              {mode === "asincrona" ? "Asincrona" : "In presenza"}
             </button>
           </motion.li>
         );

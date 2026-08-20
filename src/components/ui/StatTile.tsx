@@ -1,18 +1,22 @@
 import type { ReactNode } from "react";
+import { cn } from "@/lib/ui";
 
-// StatTile — Server Component
-//
-// A single stat tile: a small label + a big number.
-// Used in the stats grid (overall progress, pending, done, total)
-// and in the "Oggi" panel (date, time, today count, weekday).
-//
-// This is a Server Component because it's purely presentational —
-// it has no state, no effects, and no browser APIs.
+/**
+ * Riquadro con una metrica: etichetta, valore e — se serve — una nota o un
+ * pulsante informativo.
+ *
+ * Non ha stati di hover: non è cliccabile, e fingere il contrario faceva
+ * sembrare interattivi dei numeri.
+ */
 
 interface StatTileProps {
   label: string;
   value: ReactNode;
+  hint?: ReactNode;
+  /** Slot per un `InfoButton`, allineato all'etichetta. */
+  info?: ReactNode;
   accent?: "green" | "red" | "sky" | "amber";
+  className?: string;
 }
 
 const accentClass: Record<string, string> = {
@@ -22,17 +26,29 @@ const accentClass: Record<string, string> = {
   amber: "text-warning",
 };
 
-export default function StatTile({ label, value, accent }: StatTileProps) {
-  const valueClass = accent ? accentClass[accent] : "text-primary";
-
+export default function StatTile({ label, value, hint, info, accent, className }: StatTileProps) {
   return (
-    <div className="flex min-h-28 flex-col justify-between gap-3 rounded-card border border-border bg-surface-muted/70 px-4 py-3 shadow-inset transition hover:border-border-strong hover:bg-surface-hover">
-      <span className="text-xs font-medium uppercase text-muted">
-        {label}
-      </span>
-      <span className={`whitespace-nowrap text-2xl font-semibold leading-tight tabular-nums ${valueClass}`}>
-        {value}
-      </span>
+    <div
+      className={cn(
+        "flex min-h-24 flex-col justify-between gap-2 rounded-card border border-border bg-surface-muted/60 px-4 py-3",
+        className
+      )}
+    >
+      <div className="flex items-start justify-between gap-1">
+        <span className="text-xs font-medium text-muted">{label}</span>
+        {info}
+      </div>
+      <div>
+        <span
+          className={cn(
+            "block whitespace-nowrap text-2xl font-semibold leading-tight tabular-nums",
+            accent ? accentClass[accent] : "text-primary"
+          )}
+        >
+          {value}
+        </span>
+        {hint && <span className="mt-0.5 block text-xs text-muted">{hint}</span>}
+      </div>
     </div>
   );
 }

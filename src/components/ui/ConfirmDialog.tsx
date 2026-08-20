@@ -44,7 +44,7 @@ export default function ConfirmDialog({
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         tabIndex={-1}
-        className="w-full max-w-sm rounded-2xl border border-border bg-surface-elevated p-6 shadow-elevated"
+        className="w-full max-w-sm rounded-card border border-border bg-surface-elevated p-6 shadow-elevated"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id={titleId} className="text-base font-semibold text-primary">{title}</h2>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownToLine, CheckCircle2, CircleAlert, ListChecks, RotateCcw, SearchCheck, Sparkles } from "lucide-react";
+import { ArrowDownToLine, CheckCircle2, CircleAlert, Plus, RotateCcw, SearchCheck, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -63,10 +63,7 @@ export default function RequiredActionsPanel({
     <Card className={blockingErrors.length > 0 ? "border-danger/40" : undefined}>
       <CardHeader>
         <div>
-          <CardTitle className="flex items-center gap-2">
-            <ListChecks className="size-4 text-accent" />
-            Azioni richieste adesso
-          </CardTitle>
+          <CardTitle>Azioni richieste adesso</CardTitle>
           <CardDescription>
             Solo ciò che riguarda il piano {catalog.academicYear}. Gli obblighi degli anni successivi
             stanno nell&apos;anteprima in fondo alla pagina.
@@ -77,15 +74,13 @@ export default function RequiredActionsPanel({
         </Badge>
       </CardHeader>
 
+      {/* Lo stato del piano è già nella testata: qui basta la riga con il solo avvertimento utile. */}
       {nothingToDo && (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-success/30 bg-success/5 py-6 text-center">
-          <CheckCircle2 className="size-7 text-success" />
-          <p className="text-sm font-semibold text-success">Non c&apos;è niente da sistemare in questo piano</p>
-          <p className="max-w-md px-4 text-xs text-muted">
-            Il piano rispetta i vincoli che questo assistente conosce per l&apos;anno {catalog.academicYear}.
-            Verificalo comunque sui Servizi Online prima di compilare.
-          </p>
-        </div>
+        <p className="flex items-start gap-2 rounded-control border border-success/30 bg-success/5 px-4 py-3 text-xs leading-relaxed text-muted">
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" />
+          Nessuna azione richiesta per l&apos;anno {catalog.academicYear}. Verifica comunque il piano sui
+          Servizi Online prima di compilarlo.
+        </p>
       )}
 
       <div className="space-y-4">
@@ -99,9 +94,9 @@ export default function RequiredActionsPanel({
             />
             <div className="space-y-2">
               {pendingReinsertions.map((item) => (
-                <div key={item.courseCode} className="flex flex-wrap items-center gap-3 rounded-xl border border-danger/40 bg-danger/5 px-4 py-2.5">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-primary">{item.name}</p>
+                <div key={item.courseCode} className="flex flex-wrap items-center gap-3 rounded-control border border-danger/30 bg-danger/5 px-3 py-2.5">
+                  <div className="min-w-[11rem] flex-1">
+                    <p className="text-sm font-medium leading-snug text-primary">{item.name}</p>
                     <p className="text-xs text-muted">
                       {item.cfu} CFU · {item.semester}° semestre ·{" "}
                       {item.sourceAcademicYear ? `dal piano ${item.sourceAcademicYear}` : "dalla carriera"} ·{" "}
@@ -152,7 +147,7 @@ export default function RequiredActionsPanel({
             />
             <div className="space-y-2">
               {blockingErrors.map((issue) => (
-                <div key={issue.id} className="rounded-xl border border-danger/30 bg-danger/5 px-4 py-2.5">
+                <div key={issue.id} className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-medium text-primary">{issue.category}</p>
                     <ProvenanceChip provenance={issue.provenance} />
@@ -174,7 +169,7 @@ export default function RequiredActionsPanel({
             />
             <div className="space-y-2">
               {actionableWarnings.map((issue) => (
-                <div key={issue.id} className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-2.5">
+                <div key={issue.id} className="rounded-control border border-warning/30 bg-warning/5 px-3 py-2.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-medium text-primary">{issue.category}</p>
                     <ProvenanceChip provenance={issue.provenance} />
@@ -188,7 +183,8 @@ export default function RequiredActionsPanel({
       </div>
 
       {!readOnly && (
-        <Button variant="ghost" size="sm" onClick={onOpenCatalog} className="mt-4 w-full border border-dashed border-border">
+        <Button variant="secondary" onClick={onOpenCatalog} className="mt-4 w-full sm:w-auto">
+          <Plus className="size-4" aria-hidden="true" />
           Aggiungi un insegnamento
         </Button>
       )}
@@ -204,11 +200,11 @@ export default function RequiredActionsPanel({
 
 function SectionTitle({ icon, title, hint }: { icon: React.ReactNode; title: string; hint: string }) {
   return (
-    <div className="mb-2">
-      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-secondary">
+    <div className="mb-2.5">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold text-primary">
         {icon}
         {title}
-      </p>
+      </h3>
       <p className="mt-0.5 text-xs leading-relaxed text-muted">{hint}</p>
     </div>
   );
@@ -226,9 +222,9 @@ function DecisionRow({
   onAdd: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-accent/30 bg-accent/5 px-4 py-2.5">
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-primary">{choice.name}</p>
+    <div className="flex flex-wrap items-center gap-3 rounded-control border border-accent/25 bg-accent/5 px-3 py-2.5">
+      <div className="min-w-[11rem] flex-1">
+        <p className="text-sm font-medium leading-snug text-primary">{choice.name}</p>
         <p className="text-xs text-muted">
           {choice.cfu} CFU
           {choice.targetSemester ? ` · ${choice.targetSemester}° semestre` : ""}

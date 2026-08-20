@@ -26,26 +26,32 @@ export default function DashboardPage() {
         examPassedCount={dashboard.exam_passed_count}
       />
 
-      {(hasCalendar || dashboard.has_saved_plan) && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {hasCalendar && <StatTile label="Lezioni seguite" value={<AnimatedNumber value={dashboard.done_count} />} accent="green" />}
-          {hasCalendar && <StatTile label="Da seguire" value={<AnimatedNumber value={dashboard.pending_count} />} accent="red" />}
-          {dashboard.has_saved_plan && <StatTile label="Esami mancanti" value={<AnimatedNumber value={examsMissing} />} accent="green" />}
-          {dashboard.has_saved_plan && <StatTile label="Media" value={dashboard.exam_average !== null ? dashboard.exam_average.toFixed(2) : "—"} />}
+      {/* I conteggi delle lezioni stanno nella legenda del grafico: qui solo la carriera. */}
+      {dashboard.has_saved_plan && (
+        <div className="grid grid-cols-2 gap-3 sm:max-w-lg">
+          <StatTile
+            label="Esami mancanti"
+            value={<AnimatedNumber value={examsMissing} />}
+            hint={`su ${dashboard.exam_total_count} nel piano`}
+          />
+          <StatTile
+            label="Media pesata"
+            value={dashboard.exam_average !== null ? dashboard.exam_average.toFixed(2) : "—"}
+            hint={dashboard.exam_average !== null ? "sui voti verbalizzati" : "nessun voto registrato"}
+            accent="sky"
+          />
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.45fr_0.85fr]">
-        <Card elevated>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr] lg:gap-5">
+        <Card>
           <CardHeader>
             <div>
               <CardTitle>Progressione lezioni</CardTitle>
               <CardDescription>Lezioni completate rispetto all&apos;arretrato</CardDescription>
             </div>
           </CardHeader>
-          <div className="rounded-panel border border-border bg-background-soft/60 p-4 shadow-inset">
-            <ProgressChart done={dashboard.done_count} pending={dashboard.pending_count} />
-          </div>
+          <ProgressChart done={dashboard.done_count} pending={dashboard.pending_count} />
         </Card>
         <TodayPanel today_count={dashboard.today_count} todoItems={dashboard.todo_items} hasCalendar={hasCalendar} />
       </div>
@@ -54,7 +60,7 @@ export default function DashboardPage() {
         <CardHeader>
           <div>
             <CardTitle>Progresso per materia</CardTitle>
-            <CardDescription>Apri una materia per vedere lezioni, arretrati ed esame collegato</CardDescription>
+            <CardDescription>Apri una materia per lezioni, arretrati ed esame collegato</CardDescription>
           </div>
         </CardHeader>
         <SubjectProgress subjects={dashboard.subject_progress} />

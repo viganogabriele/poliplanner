@@ -43,8 +43,8 @@ export default function FutureYearsPanel({ catalog, validation }: Props) {
       </p>
 
       {upcomingChoices.length > 0 && (
-        <div className="rounded-xl border border-border bg-surface/40 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-secondary">Scelte che conviene fare prima</p>
+        <div className="rounded-control border border-border bg-surface-muted/40 p-3">
+          <p className="text-xs font-semibold text-secondary">Scelte che conviene fare prima</p>
           <ul className="mt-2 space-y-2">
             {upcomingChoices.map((choice) => (
               <li key={choice.courseCode} className="text-xs leading-relaxed text-secondary">
@@ -61,12 +61,12 @@ export default function FutureYearsPanel({ catalog, validation }: Props) {
 
       {[...byYear.entries()].sort((a, b) => a[0] - b[0]).map(([year, issues]) => (
         <div key={year}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-secondary">
+          <p className="text-xs font-semibold text-secondary">
             {year > 0 ? `Dall'anno ${year}` : "Senza anno specifico"}
           </p>
           <ul className="mt-2 space-y-2">
             {issues.map((issue) => (
-              <li key={issue.id} className="rounded-xl border border-border bg-surface/40 p-3 text-xs">
+              <li key={issue.id} className="rounded-control border border-border bg-surface-muted/40 p-3 text-xs">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <p className="font-semibold text-primary">{issue.category}</p>
                   <ProvenanceChip provenance={issue.provenance} />

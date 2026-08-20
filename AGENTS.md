@@ -83,9 +83,17 @@ come `pnpm start:next` ma avvisa di non essere compatibile con standalone.
 ## Convenzioni di modifica
 
 1. Metti accesso dati e logica di dominio in `src/lib`, UI specifica in `src/features`, UI generica in `src/components/ui`.
-2. Riusa i tipi di `src/lib/types.ts` e `src/lib/polimi/constraints.ts`; valida gli input lato server prima di persisterli.
-3. Per una nuova mutazione: funzione in `lib` -> wrapper in `app/actions.ts` con gestione errore/revalidazione -> chiamata da componente client.
-4. Per modificare regole/corsi PoliMi aggiorna il catalogo dell'anno in `src/lib/polimi/catalog/`, i test in `src/scripts/test-polimi-plan.ts` e, se pertinente, il documento di fonte `polimi_ingegneria_informatica_piano_studi_regole.md`.
+2. Il linguaggio visivo sta nei token di `globals.css`, non nei componenti: la gerarchia è la scala delle
+   superfici (`background` < `surface` < `surface-elevated`, con `surface-muted` per gli incassi), i raggi sono
+   due (`rounded-card` per schede e livelli flottanti, `rounded-control` per pulsanti, campi e righe) e l'ombra
+   serve solo a ciò che galleggia (`shadow-elevated`). Non scrivere gradienti o colori esadecimali nel JSX.
+3. Riusa i primitivi condivisi invece di ridisegnarli: `Card` (con `elevated`/`inset`), `Callout` per ogni
+   messaggio in linea, `EmptyState` per gli stati vuoti, `StatTile` per le metriche, `Button`/`IconButton`
+   (etichetta obbligatoria) per le azioni, `Badge` per gli stati. Le pillole sono per stati e filtri, non per
+   i pulsanti; il maiuscolo spaziato è solo per l'occhiello di `PageHeader`.
+4. Riusa i tipi di `src/lib/types.ts` e `src/lib/polimi/constraints.ts`; valida gli input lato server prima di persisterli.
+5. Per una nuova mutazione: funzione in `lib` -> wrapper in `app/actions.ts` con gestione errore/revalidazione -> chiamata da componente client.
+6. Per modificare regole/corsi PoliMi aggiorna il catalogo dell'anno in `src/lib/polimi/catalog/`, i test in `src/scripts/test-polimi-plan.ts` e, se pertinente, il documento di fonte `polimi_ingegneria_informatica_piano_studi_regole.md`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

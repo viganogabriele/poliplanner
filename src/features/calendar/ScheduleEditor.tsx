@@ -19,6 +19,7 @@ import { addCalendarDays, formatItalianDateRange, today, WEEKDAY_LABELS, WORKWEE
 import { LESSON_MODE_LABELS, type LessonMode, type ScheduleRow } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import Callout from "@/components/ui/Callout";
 import { fieldLabelClass, inputClass, selectClass } from "@/components/ui/Field";
 
 // A row in the editor may or may not have an id yet (new rows don't)
@@ -130,16 +131,14 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess, onDirtyChan
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={addRow}
-            disabled={isPending}
-          >
-            <Plus className="size-4" aria-hidden="true" />
-            Aggiungi lezione
-          </Button>
+        <Button type="button" variant="secondary" onClick={addRow} disabled={isPending}>
+          <Plus className="size-4" aria-hidden="true" />
+          Aggiungi lezione
+        </Button>
+        <div className="flex items-center gap-3">
+          {dirty && !isPending && (
+            <span className="hidden text-xs text-warning md:inline">Modifiche non salvate</span>
+          )}
           <Button
             type="button"
             variant="primary"
@@ -148,33 +147,26 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess, onDirtyChan
             className="hidden md:inline-flex"
           >
             <Save className="size-4" aria-hidden="true" />
-            {isPending ? "Salvataggio..." : "Salva calendario"}
+            {isPending ? "Salvataggio…" : dirty ? "Salva calendario" : "Calendario salvato"}
           </Button>
-        </div>
-
-        <div aria-live="polite" className="min-h-7">
-          {success && (
-            <Badge variant="success" dot>
-              Salvato
-            </Badge>
-          )}
-          {error && (
-            <Badge variant="danger" dot>
-              {error}
-            </Badge>
-          )}
         </div>
       </div>
 
-      <div className="hidden overflow-hidden rounded-card border border-border bg-surface/70 md:block">
+      {/* Esito del salvataggio: un messaggio leggibile, non una pillola che si allunga. */}
+      <div aria-live="polite">
+        {success && <Callout tone="success" role="status">Calendario salvato. Le lezioni sono state rigenerate.</Callout>}
+        {error && <Callout tone="danger" role="status">{error}</Callout>}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-card border border-border bg-surface-muted/50 md:block">
         <table className="w-full table-fixed text-sm">
-          <thead className="bg-surface-muted text-left text-xs uppercase text-muted">
+          <thead className="bg-surface-muted/80 text-left text-xs text-muted">
             <tr>
               <th className="w-[14%] px-3 py-3 font-medium">Giorno</th>
               <th className="w-[24%] px-3 py-3 font-medium">Materia</th>
               <th className="w-[16%] px-3 py-3 font-medium">Da</th>
               <th className="w-[16%] px-3 py-3 font-medium">A</th>
-              <th className="w-[14%] px-3 py-3 font-medium">Modalita</th>
+              <th className="w-[14%] px-3 py-3 font-medium">Modalità</th>
               <th className="w-[16%] px-3 py-3 text-right font-medium">Azioni</th>
             </tr>
           </thead>
@@ -279,7 +271,7 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess, onDirtyChan
         {rows.map((row, index) => (
           <div
             key={row._key}
-            className="min-w-0 overflow-hidden rounded-card border border-border bg-surface-muted/70 shadow-inset"
+            className="min-w-0 overflow-hidden rounded-card border border-border bg-surface-muted/70"
           >
             <button
               type="button"
@@ -295,7 +287,7 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess, onDirtyChan
                 <p className="mt-1 text-xs text-muted">{formatItalianDateRange(row.start_date, row.end_date)}</p>
               </div>
               <span className="flex shrink-0 items-center gap-2">
-                <Badge variant={row.mode === "presenza" ? "active" : "warning"} className="max-w-28 text-center">
+                <Badge size="sm" variant={row.mode === "presenza" ? "active" : "warning"}>
                   {row.mode === "asincrona" ? "Asincrona" : "In presenza"}
                 </Badge>
                 <ChevronDown className={`size-4 text-muted transition ${activeKey === row._key ? "rotate-180" : ""}`} aria-hidden="true" />
@@ -372,7 +364,7 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess, onDirtyChan
               </div>
 
               <label className="space-y-2">
-                <span className={fieldLabelClass}>Modalita</span>
+                <span className={fieldLabelClass}>Modalità</span>
                 <select
                   value={row.mode}
                   onChange={(e) =>
@@ -408,7 +400,7 @@ export default function ScheduleEditor({ initialRows, onSaveSuccess, onDirtyChan
           className="w-full"
         >
           <Save className="size-4" aria-hidden="true" />
-          {isPending ? "Salvataggio..." : dirty ? "Salva calendario" : "Calendario salvato"}
+          {isPending ? "Salvataggio…" : dirty ? "Salva calendario" : "Calendario salvato"}
         </Button>
       </div>
     </div>
