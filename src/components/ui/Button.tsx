@@ -37,9 +37,12 @@ export function buttonClass({
   className?: string;
 } = {}) {
   return cn(
-    "inline-flex shrink-0 items-center justify-center gap-2 rounded-control font-medium transition duration-150 ease-out",
+    "inline-flex shrink-0 items-center justify-center gap-2 rounded-control font-medium transition duration-150 ease-[var(--ease-spring)]",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
-    "active:scale-[0.99] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-45",
+    // Il feedback nasce sul press (istantaneo), non sul rilascio: `active:` in CSS
+    // scatta già su pointerdown, prima del click. Stesso fattore di scala di `.tap-scale`
+    // (var(--tap-scale)): qui serve la propria transizione perché tocca anche i colori.
+    "active:scale-[var(--tap-scale)] active:duration-100 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-45",
     variantClass[variant],
     sizeClass[size],
     className

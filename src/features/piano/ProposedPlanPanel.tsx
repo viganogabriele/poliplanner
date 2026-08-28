@@ -11,6 +11,7 @@ import type { PlanEntry, PlanScenario } from "@/lib/polimi/planModel";
 import type { PlanValidationResult } from "@/lib/polimi/validation";
 import { cn } from "@/lib/ui";
 import { IconButton } from "@/components/ui/IconButton";
+import CourseInfoCard, { courseMetaItems } from "./CourseInfoCard";
 
 /**
  * "Piano proposto": le righe che finiranno nei Servizi Online, divise per semestre.
@@ -197,26 +198,20 @@ function EntryRows({
         const editable = canEdit(entry);
         const reinserted = !entry.isNewFrequency;
         return (
-          <div
+          <CourseInfoCard
             key={entry.courseCode}
-            className={cn(
-              "flex flex-wrap items-center gap-3 rounded-control border px-3 py-2.5 transition",
-              reinserted ? "border-warning/30 bg-warning/5" : "border-border bg-surface-muted/40 hover:border-border-strong"
-            )}
-          >
-            <div className="min-w-[11rem] flex-1">
-              <p className="text-sm font-medium leading-snug text-primary" title={course?.name ?? entry.externalName ?? entry.courseCode}>
-                {course?.name ?? entry.externalName ?? entry.courseCode}
-              </p>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-                <span>{course?.cfu ?? entry.externalCfu ?? 0} CFU</span>
+            title={course?.name ?? entry.externalName ?? entry.courseCode}
+            tone={reinserted ? "warning" : "default"}
+            metadata={courseMetaItems(entry.courseYear, entry.semester, course?.cfu ?? entry.externalCfu ?? 0)}
+            badges={
+              <>
                 <span
                   className={cn("rounded px-1 py-0.5 text-[11px] font-bold", CATEGORY_COLORS[category] ?? "")}
                   title={CATEGORY_LABELS[category]}
                 >
                   {category}
                 </span>
-                {group && <span>{group}</span>}
+                {group && <span className="text-xs text-muted">{group}</span>}
                 {reinserted && (
                   <Badge size="sm" variant="warning">
                     <RotateCcw className="size-3" aria-hidden="true" />
@@ -234,10 +229,10 @@ function EntryRows({
                     {EXAM_STATUS_LABELS[status]}
                   </Badge>
                 )}
-              </div>
-            </div>
-            {editable && (
-              <div className="ml-auto flex shrink-0 items-center gap-1">
+              </>
+            }
+            action={editable ? (
+              <>
                 <button
                   type="button"
                   onClick={() => onSetPosition(entry.courseCode, entry.position === "effective" ? "supernumerary" : "effective")}
@@ -253,10 +248,11 @@ function EntryRows({
                 >
                   <Trash2 className="size-4" aria-hidden="true" />
                 </IconButton>
-              </div>
+              </>
+            ) : (
+              <Lock className="size-3.5 shrink-0 text-muted" aria-label="Non modificabile" />
             )}
-            {!editable && <Lock className="size-3.5 shrink-0 text-muted" aria-label="Non modificabile" />}
-          </div>
+          />
         );
       })}
     </div>

@@ -2,6 +2,7 @@
 
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/ui";
+import ExpandRows from "./ExpandRows";
 
 /**
  * Sezione richiudibile. L'apertura è una transizione CSS: nessuna libreria di animazione entra
@@ -35,7 +36,7 @@ export default function CollapsibleSection({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 rounded-card p-4 text-left transition hover:bg-surface-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50"
+        className="tap-scale flex w-full items-center justify-between gap-3 rounded-card p-4 text-left transition hover:bg-surface-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50"
       >
         <span className="min-w-0">
           <span className="block text-sm font-semibold text-primary">{title}</span>
@@ -43,12 +44,15 @@ export default function CollapsibleSection({
         </span>
         <span className="flex shrink-0 items-center gap-2">
           {badge}
-          <ChevronDown className={cn("size-4 text-muted transition-transform", open && "rotate-180")} aria-hidden="true" />
+          <ChevronDown
+            className={cn("size-4 text-muted transition-transform duration-300 ease-[var(--ease-spring)]", open && "rotate-180")}
+            aria-hidden="true"
+          />
         </span>
       </button>
-      {open && (
-        <div className="animate-panel-open border-t border-border p-4">{children}</div>
-      )}
+      <ExpandRows open={open}>
+        <div className="border-t border-border p-4">{children}</div>
+      </ExpandRows>
     </section>
   );
 }

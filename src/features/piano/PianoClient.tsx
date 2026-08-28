@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BookOpen, CheckCircle2, FlaskConical, GraduationCap, History, Layers3, Save, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
@@ -13,12 +13,14 @@ import {
   getCatalog,
   offeringSemester,
   offeringYear,
+  type Catalog,
 } from "@/lib/polimi/catalog";
 import { DISCLAIMER, type EntryPosition, type Track } from "@/lib/polimi/constraints";
 import type { CourseYear } from "@/lib/polimi/catalog/types";
 import { originForAddedCourse, toDraftEntry } from "@/lib/polimi/planModel";
 import { describeAdditionEffect } from "@/lib/polimi/courseAdvice";
-import { validatePlanScenario, type PlanValidationContext } from "@/lib/polimi/validation";
+import { getChoiceGroupsProgress } from "@/lib/polimi/choiceGroups";
+import { validatePlanScenario, type PlanValidationContext, type PlanValidationResult } from "@/lib/polimi/validation";
 import type { SimulationScenario } from "@/lib/polimi/simulator";
 import {
   applySimulationScenarioAction,
@@ -33,14 +35,19 @@ import {
   setActivePlanCycleAction,
 } from "@/app/actions";
 import CollapsibleSection from "./CollapsibleSection";
-import PlanHeader from "./PlanHeader";
+import PlanHeader, { STATUS_LABEL } from "./PlanHeader";
 import PlanIssuesAside, { bucketIssues } from "./PlanIssuesAside";
+import PlanCfuSidebar from "./PlanCfuSidebar";
+import PlanStepSection from "./PlanStepSection";
 import ProposedPlanPanel from "./ProposedPlanPanel";
 import RequiredActionsPanel from "./RequiredActionsPanel";
+import ReinsertionsPanel from "./ReinsertionsPanel";
+import ChoiceGroupCard from "./ChoiceGroupCard";
+import CourseInfoCard, { courseMetaItems } from "./CourseInfoCard";
+import CareerPanel from "./CareerPanel";
 import {
   LazyAddCourseModal,
   LazyAllRulesPanel,
-  LazyCareerPanel,
   LazyFutureYearsPanel,
   LazyPlanGuide,
   LazyScenarioHistoryPanel,
@@ -48,19 +55,23 @@ import {
 } from "./lazyPanels";
 import { cn } from "@/lib/ui";
 import type { CareerExamsMap } from "@/lib/polimi/career";
+import { formatItalianDate } from "@/lib/dates";
 import type { PlanCycle, PlanDraftPayload, PlanEntry, PlanScenario, PreviousCompiledEntry } from "@/lib/polimi/planModel";
 import type { NextYearAction } from "@/lib/pianoPage";
 
 /**
  * Orchestratore della pagina Piano di Studi.
  *
- * L'ordine dei blocchi risponde, dall'alto verso il basso, alle domande dello studente:
- * qual è il mio piano attivo e per quale AA, cosa è già chiuso in carriera, cosa devo reinserire,
- * quali decisioni devo prendere adesso, quali corsi posso aggiungere e che effetto producono.
+ * La pagina è organizzata in 3 passi numerati, mirror dello strumento ufficiale PoliMi
+ * "Piano di studi - Presentazione": (1) Frequenze acquisite, (2) Nuove frequenze, (3) Concludi.
+ * Ogni passo riusa componenti già esistenti (carriera, reinserimenti, decisioni/errori, piano
+ * proposto, gruppi a scelta, compilazione), solo ricomposti in quest'ordine.
  *
  * Le funzioni avanzate (simulatore, catalogo, guida, storico, dettaglio regole, anteprima anni
- * successivi) sono importate dinamicamente da `lazyPanels.ts`: il primo caricamento contiene solo
- * riepilogo, azioni richieste e piano corrente.
+ * successivi) sono importate dinamicamente da `lazyPanels.ts`. `CareerPanel` è un import normale
+ * nonostante sia corposo: è il contenuto sempre visibile dello step 1, quindi renderlo con
+ * `next/dynamic({ssr:false})` toglierebbe solo il rendering lato server senza rimandare nulla,
+ * dato che verrebbe comunque caricato a ogni apertura della pagina.
  */
 
 type Props = {
@@ -74,7 +85,7 @@ type Props = {
   asOf: string;
 };
 
-type Feedback = { ok: boolean; text: string; details?: string[] };
+type Feedback = { ok: boolean; text: string; details?: string[]; seq: number };
 
 export default function PianoClient({
   initialScenario,
@@ -92,16 +103,29 @@ export default function PianoClient({
   const [currentActiveCycleId, setCurrentActiveCycleId] = useState(activeCycleId);
   const [exams, setExams] = useState<CareerExamsMap>(initialExams);
   const [isPending, startTransition] = useTransition();
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [feedback, setFeedbackState] = useState<Feedback | null>(null);
+  const feedbackSeqRef = useRef(0);
+  /** Ogni feedback porta il proprio `seq` (usato come `key`), così il Callout rimonta e
+   * l'ingresso si rianima anche quando due messaggi di fila hanno lo stesso testo (es. due
+   * "Bozza salvata."). Un solo stato, non due da tenere sincronizzati: `seq` vive nel valore
+   * stesso, non in una variabile parallela che un futuro setter potrebbe dimenticare di aggiornare. */
+  const setFeedback = (value: Omit<Feedback, "seq"> | null) => {
+    feedbackSeqRef.current += 1;
+    setFeedbackState(value ? { ...value, seq: feedbackSeqRef.current } : null);
+  };
 
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogGroups, setCatalogGroups] = useState<string[] | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [careerOpen, setCareerOpen] = useState(false);
   const [simulatorOpen, setSimulatorOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [futureOpen, setFutureOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+
+  const [step1Open, setStep1Open] = useState(true);
+  const [step2Open, setStep2Open] = useState(true);
+  const [step3Open, setStep3Open] = useState(true);
 
   const catalog = useMemo(() => getCatalog(scenario.cycle.academicYear), [scenario.cycle.academicYear]);
   const context = useMemo<PlanValidationContext>(() => ({
@@ -111,6 +135,10 @@ export default function PianoClient({
     asOf,
   }), [exams, previousCompiledEntries, baseRevisionScenario, asOf]);
   const validation = useMemo(() => validatePlanScenario(scenario, context), [scenario, context]);
+  const choiceGroups = useMemo(
+    () => getChoiceGroupsProgress(catalog, scenario, validation).filter((group) => group.dueNow),
+    [catalog, scenario, validation]
+  );
 
   const isHistorical = scenario.cycle.status === "polimi_compiled" || Boolean(scenario.cycle.archivedAt);
   const revisionMode = scenario.cycle.validationMode === "second_semester_revision";
@@ -231,6 +259,15 @@ export default function PianoClient({
       ...prev,
       entries: prev.entries.map((entry) => (entry.courseCode === code ? { ...entry, position } : entry)),
     }));
+  };
+
+  const openCatalog = (groups: string[] | null = null) => {
+    setCatalogGroups(groups);
+    setCatalogOpen(true);
+  };
+  const closeCatalog = () => {
+    setCatalogOpen(false);
+    setCatalogGroups(null);
   };
 
   // ---------------------------------------------------------------- persistenza
@@ -365,6 +402,14 @@ export default function PianoClient({
 
   // ---------------------------------------------------------------- render
 
+  const step1Badge = validation.missingReinsertions.length > 0
+    ? <Badge size="sm" variant="warning">{validation.missingReinsertions.length} da reinserire</Badge>
+    : <Badge size="sm" variant="success">{validation.summary.registeredCareerCfu} CFU</Badge>;
+
+  const step2Badge = <Badge size="sm" variant={buckets.errors.length > 0 ? "danger" : "neutral"}>{validation.summary.newFrequencyCfu} CFU nuovi</Badge>;
+
+  const step3Badge = <Badge size="sm" variant={scenario.cycle.status === "polimi_compiled" ? "success" : scenario.cycle.status === "ready" ? "active" : "neutral"}>{STATUS_LABEL[scenario.cycle.status]}</Badge>;
+
   return (
     /* Flusso di pagina normale: prima l'area centrale scorreva dentro un contenitore
        e la colonna laterale in un altro, con due barre di scorrimento sovrapposte. */
@@ -381,6 +426,10 @@ export default function PianoClient({
           onNextYear={handleNextYear}
           pending={isPending}
         />
+
+        <div className="xl:hidden">
+          <PlanCfuSidebar catalog={catalog} summary={validation.summary} />
+        </div>
 
         {revisionMode && (
           <Callout
@@ -405,62 +454,116 @@ export default function PianoClient({
           </Callout>
         )}
 
-        <RequiredActionsPanel
-          catalog={catalog}
-          validation={validation}
-          readOnly={isHistorical}
-          onAddReinsertion={addReinsertion}
-          onAddCourse={addCourse}
-          onOpenCatalog={() => setCatalogOpen(true)}
-        />
+        <PlanStepSection
+          number={1}
+          title="Frequenze acquisite"
+          description="Cosa risulta già sostenuto o convalidato in carriera, ed eventuali frequenze da reinserire."
+          badge={step1Badge}
+          open={step1Open}
+          onToggle={() => setStep1Open((value) => !value)}
+        >
+          <ReinsertionsPanel validation={validation} readOnly={isHistorical} onAddReinsertion={addReinsertion} />
+          <CareerPanel exams={exams} academicYear={scenario.cycle.academicYear} track={scenario.cycle.track} onChanged={setExams} />
+        </PlanStepSection>
 
-        <ProposedPlanPanel
-          catalog={catalog}
-          scenario={scenario}
-          validation={validation}
-          exams={exams}
-          readOnly={isHistorical}
-          revisionMode={revisionMode}
-          editableSemester={editableSemester}
-          onRemove={removeEntry}
-          onSetPosition={setPosition}
-        />
+        <PlanStepSection
+          number={2}
+          title="Nuove frequenze"
+          description="Scegli gli insegnamenti del nuovo anno accademico: qui contano solo le nuove frequenze."
+          badge={step2Badge}
+          open={step2Open}
+          onToggle={() => setStep2Open((value) => !value)}
+        >
+          <RequiredActionsPanel
+            catalog={catalog}
+            validation={validation}
+            readOnly={isHistorical}
+            onAddCourse={addCourse}
+            onOpenCatalog={() => openCatalog(null)}
+          />
 
-        {!isHistorical && (
-          <Card>
-            <p className="text-sm font-semibold text-primary">Compilazione del piano</p>
-            <p className="mt-1 text-sm text-muted">
-              Tre passi: salvi la proposta, la marchi come pronta, poi la copi nei Servizi Online PoliMi.
-            </p>
-            <ol className="mt-4 grid gap-2 text-sm sm:grid-cols-3" aria-label="Stato della compilazione">
-              <WorkflowStep number="1" label="Salva la proposta" active={scenario.cycle.status === "draft"} complete={scenario.cycle.id !== null} />
-              <WorkflowStep number="2" label="Segna come pronta" active={scenario.cycle.status === "ready"} complete={scenario.cycle.status === "ready" || scenario.cycle.status === "polimi_compiled"} />
-              <WorkflowStep number="3" label="Conferma la copia su PoliMi" active={scenario.cycle.status === "polimi_compiled"} complete={scenario.cycle.status === "polimi_compiled"} />
-            </ol>
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              <Button variant="primary" onClick={save} disabled={isPending} className="w-full sm:w-auto">
-                <Save className="size-4" aria-hidden="true" />
-                {scenario.cycle.id === null ? "Salva piano" : "Salva bozza"}
-              </Button>
-              <Button variant="secondary" onClick={markReady} disabled={isPending || buckets.errors.length > 0} className="w-full sm:w-auto">
-                <CheckCircle2 className="size-4" aria-hidden="true" />
-                Segna come pronta
-              </Button>
-              <Button variant="secondary" onClick={markCompiled} disabled={isPending || scenario.cycle.status !== "ready"} className="w-full sm:w-auto">
-                <GraduationCap className="size-4" aria-hidden="true" />
-                Ho copiato su PoliMi
-              </Button>
+          {choiceGroups.length > 0 && (
+            <div>
+              <h3 className="section-label mb-2">Gruppi a scelta</h3>
+              <div className="space-y-3">
+                {choiceGroups.map((group) => (
+                  <ChoiceGroupCard
+                    key={group.ruleId}
+                    catalog={catalog}
+                    group={group}
+                    readOnly={isHistorical}
+                    onSelect={() => openCatalog(group.groups)}
+                  />
+                ))}
+              </div>
             </div>
-            {buckets.errors.length > 0 && (
-              <p className="mt-2 text-xs text-muted">
-                Il secondo passo si sblocca quando non restano problemi da risolvere.
+          )}
+
+          <ProposedPlanPanel
+            catalog={catalog}
+            scenario={scenario}
+            validation={validation}
+            exams={exams}
+            readOnly={isHistorical}
+            revisionMode={revisionMode}
+            editableSemester={editableSemester}
+            onRemove={removeEntry}
+            onSetPosition={setPosition}
+          />
+        </PlanStepSection>
+
+        <PlanStepSection
+          number={3}
+          title="Concludi"
+          description="Verifica il riepilogo, salva la bozza e segui i passi per compilare il piano su PoliMi."
+          badge={step3Badge}
+          open={step3Open}
+          onToggle={() => setStep3Open((value) => !value)}
+        >
+          <PlanSummary catalog={catalog} scenario={scenario} validation={validation} />
+
+          {!isHistorical && (
+            <Card>
+              <p className="text-sm font-semibold text-primary">Compilazione del piano</p>
+              <p className="mt-1 text-sm text-muted">
+                Tre passi: salvi la proposta, la marchi come pronta, poi la copi nei Servizi Online PoliMi.
               </p>
-            )}
-          </Card>
-        )}
+              <ol className="mt-4 grid gap-2 text-sm sm:grid-cols-3" aria-label="Stato della compilazione">
+                <WorkflowStep number="1" label="Salva la proposta" active={scenario.cycle.status === "draft"} complete={scenario.cycle.id !== null} />
+                <WorkflowStep number="2" label="Segna come pronta" active={scenario.cycle.status === "ready"} complete={scenario.cycle.status === "ready" || scenario.cycle.status === "polimi_compiled"} />
+                <WorkflowStep number="3" label="Conferma la copia su PoliMi" active={scenario.cycle.status === "polimi_compiled"} complete={scenario.cycle.status === "polimi_compiled"} />
+              </ol>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <Button variant="primary" onClick={save} disabled={isPending} className="w-full sm:w-auto">
+                  <Save className="size-4" aria-hidden="true" />
+                  {scenario.cycle.id === null ? "Salva piano" : "Salva bozza"}
+                </Button>
+                <Button variant="secondary" onClick={markReady} disabled={isPending || buckets.errors.length > 0} className="w-full sm:w-auto">
+                  <CheckCircle2 className="size-4" aria-hidden="true" />
+                  Segna come pronta
+                </Button>
+                <Button variant="secondary" onClick={markCompiled} disabled={isPending || scenario.cycle.status !== "ready"} className="w-full sm:w-auto">
+                  <GraduationCap className="size-4" aria-hidden="true" />
+                  Ho copiato su PoliMi
+                </Button>
+              </div>
+              {buckets.errors.length > 0 && (
+                <p className="mt-2 text-xs text-muted">
+                  Il secondo passo si sblocca quando non restano problemi da risolvere.
+                </p>
+              )}
+            </Card>
+          )}
+        </PlanStepSection>
 
         {feedback && (
-          <Callout role="status" tone={feedback.ok ? "success" : "danger"} title={feedback.text}>
+          <Callout
+            key={feedback.seq}
+            role="status"
+            tone={feedback.ok ? "success" : "danger"}
+            title={feedback.text}
+            className="animate-fadeup"
+          >
             {feedback.details && feedback.details.length > 0 && (
               <ul className="space-y-0.5">
                 {feedback.details.map((detail) => <li key={detail}>· {detail}</li>)}
@@ -471,7 +574,7 @@ export default function PianoClient({
 
         <CollapsibleSection
           title="Altre funzioni"
-          description="Carriera, guida, simulatore, anni successivi e storico."
+          description="Guida, simulatore, anni successivi e storico."
           badge={<Layers3 className="size-4 text-muted" />}
           open={toolsOpen}
           onToggle={() => setToolsOpen((value) => !value)}
@@ -483,16 +586,6 @@ export default function PianoClient({
               {guideOpen ? "Chiudi guida" : "Apri guida"}
             </Button>
             {guideOpen && <LazyPlanGuide onClose={() => setGuideOpen(false)} />}
-
-            <CollapsibleSection
-              title="Carriera"
-              description="Cosa risulta davvero in libretto. Solo gli esami verbalizzati chiudono un'attività."
-              badge={<Badge size="sm" variant="success">{validation.summary.registeredCareerCfu} CFU</Badge>}
-              open={careerOpen}
-              onToggle={() => setCareerOpen((value) => !value)}
-            >
-              {careerOpen && <LazyCareerPanel exams={exams} academicYear={scenario.cycle.academicYear} track={scenario.cycle.track} onChanged={setExams} />}
-            </CollapsibleSection>
 
             <CollapsibleSection
               title="Anteprima anni successivi"
@@ -561,6 +654,7 @@ export default function PianoClient({
       <aside className="hidden xl:block">
         <div className="sticky top-6 space-y-3">
           <h2 className="section-label">Verifica del piano {scenario.cycle.academicYear}</h2>
+          <PlanCfuSidebar catalog={catalog} summary={validation.summary} />
           <PlanIssuesAside validation={validation} onOpenDetails={() => setDetailsOpen(true)} />
           <p className="rounded-card border border-border bg-surface p-3 text-xs leading-relaxed text-muted">
             {DISCLAIMER}
@@ -570,7 +664,7 @@ export default function PianoClient({
 
       {catalogOpen && (
         <LazyAddCourseModal
-          onClose={() => setCatalogOpen(false)}
+          onClose={closeCatalog}
           academicYear={scenario.cycle.academicYear}
           track={scenario.cycle.track}
           studentYear={scenario.cycle.studentYear}
@@ -579,6 +673,7 @@ export default function PianoClient({
           reinsertionCodes={reinsertionCodes}
           structuralChoices={validation.structuralChoices}
           restrictToSemester={revisionMode ? editableSemester : null}
+          restrictToGroups={catalogGroups}
           onAdd={addCourse}
         />
       )}
@@ -589,7 +684,7 @@ export default function PianoClient({
 function WorkflowStep({ number, label, active, complete }: { number: string; label: string; active: boolean; complete: boolean }) {
   return (
     <li className={cn(
-      "flex items-center gap-2.5 rounded-control border px-3 py-2.5",
+      "flex items-center gap-2.5 rounded-control border px-3 py-2.5 transition-colors duration-300",
       active
         ? "border-accent/40 bg-accent/5 text-primary"
         : complete
@@ -597,12 +692,75 @@ function WorkflowStep({ number, label, active, complete }: { number: string; lab
           : "border-border bg-surface-muted/40 text-muted"
     )}>
       <span className={cn(
-        "grid size-6 shrink-0 place-items-center rounded-full text-xs font-semibold",
+        "grid size-6 shrink-0 place-items-center rounded-full text-xs font-semibold transition-colors duration-300",
         active ? "bg-accent text-background" : complete ? "bg-success/15 text-success" : "bg-surface-elevated text-muted"
       )}>
-        {complete && !active ? <CheckCircle2 className="size-3.5" aria-hidden="true" /> : number}
+        {complete && !active ? <CheckCircle2 className="animate-pop size-3.5" aria-hidden="true" /> : number}
       </span>
       <span className="min-w-0">{label}</span>
     </li>
+  );
+}
+
+/**
+ * Riepilogo di sola lettura: mirror della pagina ufficiale "Il tuo piano", con le stesse due
+ * sezioni ("sostenuti" e "da sostenere") prima di salvare o compilare.
+ */
+function PlanSummary({
+  catalog,
+  scenario,
+  validation,
+}: {
+  catalog: Catalog;
+  scenario: PlanScenario;
+  validation: PlanValidationResult;
+}) {
+  const { alreadyPassed } = validation.sections;
+  const planEntries = scenario.entries;
+
+  return (
+    <div className="space-y-4">
+      {alreadyPassed.length > 0 && (
+        <div>
+          <h3 className="section-label mb-2">Insegnamenti sostenuti e convalidati</h3>
+          <div className="space-y-1.5">
+            {alreadyPassed.map((row) => (
+              <CourseInfoCard
+                key={row.courseCode}
+                title={row.name}
+                tone="success"
+                metadata={courseMetaItems(row.courseYear, row.semester, row.cfu)}
+                badges={
+                  <>
+                    {row.grade && <span className="font-mono text-xs font-semibold text-success">{row.grade}</span>}
+                    {row.registeredAt && <span className="text-xs text-muted">verb. {formatItalianDate(row.registeredAt)}</span>}
+                  </>
+                }
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {planEntries.length > 0 && (
+        <div>
+          <h3 className="section-label mb-2">Insegnamenti da sostenere</h3>
+          <div className="space-y-1.5">
+            {planEntries.map((entry) => {
+              const course = findCourse(catalog, entry.courseCode);
+              return (
+                <CourseInfoCard
+                  key={entry.courseCode}
+                  title={course?.name ?? entry.externalName ?? entry.courseCode}
+                  tone={entry.position === "supernumerary" ? "muted" : "default"}
+                  metadata={courseMetaItems(entry.courseYear, entry.semester, course?.cfu ?? entry.externalCfu ?? 0)}
+                  badges={entry.position === "supernumerary" ? <Badge size="sm" variant="neutral">Soprannumero</Badge> : undefined}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

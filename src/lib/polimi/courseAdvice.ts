@@ -76,6 +76,8 @@ export type CourseChoiceInfo = {
   bucket: CourseBucket;
   /** Nome leggibile del gruppo/tabella, mai la sigla nuda. */
   group: string | null;
+  /** Chiave grezza del gruppo/tabella, per filtrare su un `ChoiceGroupProgress` specifico. */
+  rawGroup: string | null;
   groupExplanation: string | null;
   /** true quando i CFU dell'insegnamento entrano nel gruppo a scelta dell'anno. */
   countsTowardChoiceGroup: boolean;
@@ -271,6 +273,7 @@ export function describeAddableCourses(input: DescribeCoursesInput): CourseChoic
       categoryLabel: CATEGORY_LABELS[category] ?? category,
       bucket,
       group: groupLabel(catalog, group),
+      rawGroup: group,
       groupExplanation: groupDescription(catalog, group),
       countsTowardChoiceGroup: inChoiceGroup,
       satisfies,

@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import Callout from "@/components/ui/Callout";
-import InfoButton from "@/components/ui/InfoButton";
 import { TRACKS, type PlanStatus, type PlanValidationMode } from "@/lib/polimi/constraints";
 import type { PlanValidationResult } from "@/lib/polimi/validation";
 import type { NextYearAction } from "@/lib/pianoPage";
@@ -127,13 +126,6 @@ export default function PlanHeader({
             </p>
           </div>
         </div>
-
-        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 border-t border-border pt-4 sm:grid-cols-4">
-          <Metric label="Totale del piano" value={summary.effectiveCfu} hint="attività effettive" tone="accent" prominent />
-          <Metric label="Verbalizzati" value={summary.registeredCareerCfu} hint="in carriera" tone="success" />
-          <Metric label="Reinseriti" value={summary.reinsertedCfu} hint="già frequentati" tone="warning" />
-          <Metric label="Nuovi" value={summary.contributionCfu} hint="per contribuzione" info={summary.contributionRule} />
-        </dl>
       </Card>
 
       {nextYearAction && isSaved && (
@@ -157,41 +149,6 @@ export default function PlanHeader({
       {dataStatusReason && (
         <Callout tone="warning">{dataStatusReason}</Callout>
       )}
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  hint,
-  tone,
-  info,
-  prominent = false,
-}: {
-  label: string;
-  value: number;
-  hint: string;
-  tone?: "success" | "warning" | "accent";
-  info?: string;
-  prominent?: boolean;
-}) {
-  return (
-    <div className="min-w-0">
-      <dt className="flex items-center gap-1 text-xs text-muted">
-        {label}
-        {info && <InfoButton size="sm" title={label}><p>{info}</p></InfoButton>}
-      </dt>
-      <dd
-        className={cn(
-          "mt-0.5 whitespace-nowrap font-semibold tabular-nums",
-          prominent ? "text-3xl" : "text-2xl",
-          tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : tone === "accent" ? "text-accent" : "text-primary"
-        )}
-      >
-        {value} <span className="text-xs font-medium text-muted">CFU</span>
-      </dd>
-      <dd className="mt-0.5 text-xs text-muted">{hint}</dd>
     </div>
   );
 }

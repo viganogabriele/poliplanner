@@ -1,28 +1,25 @@
 "use client";
 
-import { ArrowDownToLine, CheckCircle2, CircleAlert, Plus, RotateCcw, SearchCheck, Sparkles } from "lucide-react";
+import { ArrowDownToLine, CalendarDays, CheckCircle2, CircleAlert, Clock3, Plus, SearchCheck, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { groupLabel, type Catalog } from "@/lib/polimi/catalog";
-import { EXAM_STATUS_LABELS } from "@/lib/polimi/constraints";
 import type { StructuralChoice } from "@/lib/polimi/structuralChoice";
 import type { PlanValidationResult } from "@/lib/polimi/validation";
 import { ProvenanceChip } from "./ProvenanceChip";
+import CourseInfoCard from "./CourseInfoCard";
 
 /**
- * "Azioni richieste adesso": la sezione principale della pagina.
- *
- * Contiene solo cose che si possono fare oggi, in ordine di urgenza: sistemare gli errori del
- * piano corrente, reinserire le frequenze dovute, prendere le decisioni che il Regolamento
- * richiede a questo anno. Niente obblighi degli anni successivi, niente note sui dati.
+ * "Azioni richieste adesso": decisioni obbligate ed errori bloccanti dello step "Nuove frequenze".
+ * I reinserimenti (frequenza già acquisita) sono un pannello a parte, `ReinsertionsPanel`, montato
+ * nello step "Frequenze acquisite".
  */
 
 type Props = {
   catalog: Catalog;
   validation: PlanValidationResult;
   readOnly: boolean;
-  onAddReinsertion: (code: string) => void;
   onAddCourse: (code: string) => void;
   onOpenCatalog: () => void;
 };
@@ -31,11 +28,10 @@ export default function RequiredActionsPanel({
   catalog,
   validation,
   readOnly,
-  onAddReinsertion,
   onAddCourse,
   onOpenCatalog,
 }: Props) {
-  const { missingReinsertions, requiredReinsertions, structuralChoices, issues } = validation;
+  const { structuralChoices, issues } = validation;
   const planCodes = new Set([
     ...validation.sections.reinsertions.map((entry) => entry.courseCode),
     ...validation.sections.newFrequencies.map((entry) => entry.courseCode),
@@ -51,19 +47,17 @@ export default function RequiredActionsPanel({
   const openDecisions = structuralChoices.filter(
     (choice) => choice.state === "choose_in_recovery_table" && !planCodes.has(choice.courseCode)
   );
-  const pendingReinsertions = missingReinsertions;
 
   const nothingToDo = blockingErrors.length === 0
     && openDecisions.length === 0
-    && pendingReinsertions.length === 0
     && actionableWarnings.length === 0;
-  const totalToHandle = blockingErrors.length + openDecisions.length + pendingReinsertions.length + actionableWarnings.length;
+  const totalToHandle = blockingErrors.length + openDecisions.length + actionableWarnings.length;
 
   return (
     <Card className={blockingErrors.length > 0 ? "border-danger/40" : undefined}>
       <CardHeader>
         <div>
-          <CardTitle>Azioni richieste adesso</CardTitle>
+          <CardTitle>Decisioni ed errori del piano {catalog.academicYear}</CardTitle>
           <CardDescription>
             Solo ciò che riguarda il piano {catalog.academicYear}. Gli obblighi degli anni successivi
             stanno nell&apos;anteprima in fondo alla pagina.
@@ -84,38 +78,7 @@ export default function RequiredActionsPanel({
       )}
 
       <div className="space-y-4">
-        {/* 1. Reinserimenti dovuti: frequenza storica da riportare, non nuove scelte. */}
-        {pendingReinsertions.length > 0 && (
-          <section>
-            <SectionTitle
-              icon={<RotateCcw className="size-3.5 text-warning" />}
-              title="Reinserisci le frequenze già acquisite"
-              hint="Erano nel tuo piano di un anno precedente e l'esame non è ancora verbalizzato. Vanno riportati come erano: non sono nuove scelte e non occupano i CFU del gruppo a scelta."
-            />
-            <div className="space-y-2">
-              {pendingReinsertions.map((item) => (
-                <div key={item.courseCode} className="flex flex-wrap items-center gap-3 rounded-control border border-danger/30 bg-danger/5 px-3 py-2.5">
-                  <div className="min-w-[11rem] flex-1">
-                    <p className="text-sm font-medium leading-snug text-primary">{item.name}</p>
-                    <p className="text-xs text-muted">
-                      {item.cfu} CFU · {item.semester}° semestre ·{" "}
-                      {item.sourceAcademicYear ? `dal piano ${item.sourceAcademicYear}` : "dalla carriera"} ·{" "}
-                      esame: {EXAM_STATUS_LABELS[item.examStatus]}
-                    </p>
-                  </div>
-                  {!readOnly && (
-                    <Button size="sm" onClick={() => onAddReinsertion(item.courseCode)}>
-                      <ArrowDownToLine className="size-4" />
-                      Reinserisci
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* 2. Scelte obbligate: mai scelte prima, quindi da scegliere ora in tabella di recupero. */}
+        {/* 1. Scelte obbligate: mai scelte prima, quindi da scegliere ora in tabella di recupero. */}
         {openDecisions.length > 0 && (
           <section>
             <SectionTitle
@@ -137,7 +100,7 @@ export default function RequiredActionsPanel({
           </section>
         )}
 
-        {/* 3. Errori bloccanti residui, spiegati con la regola applicata. */}
+        {/* 2. Errori bloccanti residui, spiegati con la regola applicata. */}
         {blockingErrors.length > 0 && (
           <section>
             <SectionTitle
@@ -159,7 +122,7 @@ export default function RequiredActionsPanel({
           </section>
         )}
 
-        {/* 4. Verifiche da fare fuori dall'app: azionabili, ma non bloccanti. */}
+        {/* 3. Verifiche da fare fuori dall'app: azionabili, ma non bloccanti. */}
         {actionableWarnings.length > 0 && (
           <section>
             <SectionTitle
@@ -188,12 +151,6 @@ export default function RequiredActionsPanel({
           Aggiungi un insegnamento
         </Button>
       )}
-
-      {requiredReinsertions.length > 0 && pendingReinsertions.length === 0 && (
-        <p className="mt-3 text-xs text-muted">
-          Tutti i {requiredReinsertions.length} reinserimenti dovuti sono già nel piano.
-        </p>
-      )}
     </Card>
   );
 }
@@ -221,29 +178,33 @@ function DecisionRow({
   readOnly: boolean;
   onAdd: () => void;
 }) {
+  const metadata = [{ icon: Clock3, text: `${choice.cfu} CFU` }];
+  if (choice.targetSemester) metadata.push({ icon: CalendarDays, text: `${choice.targetSemester}° semestre` });
+
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-control border border-accent/25 bg-accent/5 px-3 py-2.5">
-      <div className="min-w-[11rem] flex-1">
-        <p className="text-sm font-medium leading-snug text-primary">{choice.name}</p>
-        <p className="text-xs text-muted">
-          {choice.cfu} CFU
-          {choice.targetSemester ? ` · ${choice.targetSemester}° semestre` : ""}
-          {table ? ` · ${table}` : ""}
-          {" · conta nel gruppo a scelta"}
-        </p>
-        {choice.inferredFromMissingHistory && (
-          <p className="mt-1 text-[11px] leading-snug text-warning">
-            Non ho piani degli anni precedenti in archivio: che non fosse già stato scelto è una deduzione.
-            Se lo avevi inserito, registra quel piano oppure segna l&apos;esito dell&apos;esame in carriera.
-          </p>
-        )}
-      </div>
-      {!readOnly && (
+    <CourseInfoCard
+      title={choice.name}
+      tone="accent"
+      metadata={metadata}
+      badges={
+        <>
+          {table && <span className="text-xs text-muted">{table}</span>}
+          <Badge size="sm" variant="active">Conta nel gruppo a scelta</Badge>
+        </>
+      }
+      action={!readOnly && (
         <Button size="sm" onClick={onAdd}>
           <ArrowDownToLine className="size-4" />
           Scegli ora
         </Button>
       )}
-    </div>
+    >
+      {choice.inferredFromMissingHistory && (
+        <p className="text-[11px] leading-snug text-warning">
+          Non ho piani degli anni precedenti in archivio: che non fosse già stato scelto è una deduzione.
+          Se lo avevi inserito, registra quel piano oppure segna l&apos;esito dell&apos;esame in carriera.
+        </p>
+      )}
+    </CourseInfoCard>
   );
 }
